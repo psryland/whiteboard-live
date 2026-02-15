@@ -64,7 +64,8 @@ export function App() {
 	}
 
 	const fluent_theme = Get_Fluent_Theme(theme_name);
-	const tldraw_theme = theme_name === 'default' ? 'light' : 'dark';
+	// Always use a white canvas — it's a whiteboard after all
+	const tldraw_theme = 'light' as const;
 
 	return (
 		<FluentProvider theme={fluent_theme} style={{ height: '100%' }}>
