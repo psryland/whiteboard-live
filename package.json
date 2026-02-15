@@ -1,0 +1,31 @@
+{
+	"name": "teams-whiteboard",
+	"version": "1.0.0",
+	"description": "A Draw.io-style infinite canvas whiteboard for Microsoft Teams",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "tsc && vite build",
+		"preview": "vite preview",
+		"lint": "eslint src/ --ext .ts,.tsx"
+	},
+	"dependencies": {
+		"react": "^18.3.1",
+		"react-dom": "^18.3.1",
+		"tldraw": "^4.0.0",
+		"@microsoft/teams-js": "^2.31.0",
+		"@fluentui/react-components": "^9.56.0"
+	},
+	"devDependencies": {
+		"@types/react": "^18.3.0",
+		"@types/react-dom": "^18.3.0",
+		"@vitejs/plugin-react": "^4.3.0",
+		"typescript": "^5.6.0",
+		"vite": "^6.0.0",
+		"eslint": "^9.0.0",
+		"@eslint/js": "^9.0.0",
+		"typescript-eslint": "^8.0.0",
+		"eslint-plugin-react-hooks": "^5.0.0"
+	}
+}
