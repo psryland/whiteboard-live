@@ -8,19 +8,10 @@ import { Canvas } from './canvas/Canvas';
 
 const msal_instance = new PublicClientApplication(msal_config);
 
-// Detect if this page loaded in an MSAL auth popup by checking the hash for
-// auth response parameters. The state param contains interactionType:"popup".
-const hash = window.location.hash;
-const is_auth_response = hash.includes('code=') || hash.includes('error=');
-
-// Initialize MSAL. If there's an auth response in the hash, handleRedirectPromise
-// processes it. In a popup, MSAL will close the popup after processing.
-const msal_init = msal_instance.initialize().then(() => {
-	if (is_auth_response) {
-		return msal_instance.handleRedirectPromise().catch(() => null);
-	}
-	return null;
-});
+// Initialize MSAL and process any pending auth redirect (e.g. when popup was blocked)
+const msal_init = msal_instance.initialize().then(() =>
+	msal_instance.handleRedirectPromise().catch(() => null)
+);
 
 // Error boundary to catch and display React rendering errors
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -47,28 +38,19 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 export function App() {
 	const [is_config_frame, set_config_frame] = useState(false);
 	const [msal_ready, set_msal_ready] = useState(false);
-	const [auth_handled, set_auth_handled] = useState(!is_auth_response);
 
 	useEffect(() => {
 		msal_init.then(() => {
-			if (is_auth_response) {
-				// We're in the popup or redirect with an auth response.
-				// If this is a popup, close it. Otherwise clean up and show the app.
-				if (window.opener) {
-					window.close();
-					return;
-				}
+			// Clean up any leftover auth hash (redirect fallback)
+			if (window.location.hash.includes('code=')) {
 				window.location.hash = '';
 				history.replaceState(null, '', window.location.pathname);
-				set_auth_handled(true);
 			}
 			set_msal_ready(true);
 		});
 	}, []);
 
-	// Skip Teams SDK init and full rendering if we're handling an auth response
 	useEffect(() => {
-		if (is_auth_response) return;
 		async function Init_Teams() {
 			try {
 				const timeout = new Promise<never>((_, reject) =>
@@ -104,7 +86,7 @@ export function App() {
 		Init_Teams();
 	}, []);
 
-	if (!msal_ready || !auth_handled) return <div style={{ padding: 20, textAlign: 'center' }}>Signing in...</div>;
+	if (!msal_ready) return null;
 
 	if (is_config_frame) {
 		return (
