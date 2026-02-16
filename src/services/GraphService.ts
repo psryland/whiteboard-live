@@ -174,3 +174,24 @@ function Sanitize_Filename(name: string): string {
 	// Remove characters not allowed in OneDrive file names
 	return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'Untitled Board';
 }
+
+/** Upload an arbitrary file (SVG, PNG, JSON export) to the app folder in OneDrive. */
+export async function Upload_To_OneDrive(token: string, filename: string, content: Blob | string, content_type?: string): Promise<string> {
+	await Get_App_Folder_Id(token);
+	const url = `${GRAPH_BASE}/me/drive/root:/${APP_FOLDER_NAME}/${filename}:/content`;
+	const body = typeof content === 'string' ? content : content;
+	const res = await fetch(url, {
+		method: 'PUT',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': content_type || (typeof content === 'string' ? 'text/plain' : 'application/octet-stream'),
+		},
+		body,
+	});
+	if (!res.ok) {
+		const text = await res.text().catch(() => '');
+		throw new Error(`Upload failed: ${res.status}: ${text}`);
+	}
+	const item = await res.json();
+	return item.webUrl || '';
+}
