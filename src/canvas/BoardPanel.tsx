@@ -133,30 +133,101 @@ export function BoardPanel({
 		set_editing_id(null);
 	}
 
-	function Handle_Export_SVG(): void {
+	// Compute bounding box of all content
+	function Content_Bounds(): { x: number; y: number; w: number; h: number } | null {
+		const { shapes, connectors, freehand_paths } = current_state;
+		if (shapes.length === 0 && connectors.length === 0 && freehand_paths.length === 0) return null;
+
+		let min_x = Infinity, min_y = Infinity, max_x = -Infinity, max_y = -Infinity;
+		for (const s of shapes) {
+			min_x = Math.min(min_x, s.x);
+			min_y = Math.min(min_y, s.y);
+			max_x = Math.max(max_x, s.x + s.width);
+			max_y = Math.max(max_y, s.y + s.height);
+		}
+		for (const c of connectors) {
+			for (const end of [c.source, c.target]) {
+				if (end.shape_id) continue; // bound to shape, already counted
+				min_x = Math.min(min_x, end.x);
+				min_y = Math.min(min_y, end.y);
+				max_x = Math.max(max_x, end.x);
+				max_y = Math.max(max_y, end.y);
+			}
+		}
+		for (const f of freehand_paths) {
+			for (const pt of f.points) {
+				min_x = Math.min(min_x, pt.x);
+				min_y = Math.min(min_y, pt.y);
+				max_x = Math.max(max_x, pt.x);
+				max_y = Math.max(max_y, pt.y);
+			}
+		}
+		if (!isFinite(min_x)) return null;
+		const pad = 20;
+		return { x: min_x - pad, y: min_y - pad, w: max_x - min_x + pad * 2, h: max_y - min_y + pad * 2 };
+	}
+
+	// Clone just the canvas content group, strip UI elements, set viewBox to content bounds
+	function Export_SVG_Element(): SVGSVGElement | null {
 		const svg_el = document.querySelector('svg');
-		if (!svg_el) return;
-		const clone = svg_el.cloneNode(true) as SVGSVGElement;
-		clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-		const blob = new Blob([clone.outerHTML], { type: 'image/svg+xml;charset=utf-8' });
+		if (!svg_el) return null;
+		const bounds = Content_Bounds();
+		if (!bounds) return null;
+
+		// Find the content <g> (the transform group with canvas content)
+		const content_g = svg_el.querySelector('g[transform]');
+		if (!content_g) return null;
+
+		// Build a clean SVG with just the content
+		const ns = 'http://www.w3.org/2000/svg';
+		const svg = document.createElementNS(ns, 'svg');
+		svg.setAttribute('xmlns', ns);
+		svg.setAttribute('viewBox', `${bounds.x} ${bounds.y} ${bounds.w} ${bounds.h}`);
+		svg.setAttribute('width', String(bounds.w));
+		svg.setAttribute('height', String(bounds.h));
+
+		// Clone content group children without the viewport transform
+		const g = document.createElementNS(ns, 'g');
+		for (const child of Array.from(content_g.children)) {
+			g.appendChild(child.cloneNode(true));
+		}
+
+		// Remove selection handles, port indicators, hover effects, endpoint handles
+		for (const el of Array.from(g.querySelectorAll('[data-handle-index], [data-rotate-handle], [data-port-id], [data-freehand-handle]'))) {
+			el.remove();
+		}
+		// Remove transparent hit-area elements
+		for (const el of Array.from(g.querySelectorAll('[stroke="transparent"]'))) {
+			el.remove();
+		}
+		// Remove selection outlines (blue dashed rects from freehand selection)
+		for (const el of Array.from(g.querySelectorAll('rect[stroke="#00d4ff"]'))) {
+			el.remove();
+		}
+
+		svg.appendChild(g);
+		return svg;
+	}
+
+	function Handle_Export_SVG(): void {
+		const svg = Export_SVG_Element();
+		if (!svg) { set_export_message('Nothing to export'); return; }
+		const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml;charset=utf-8' });
 		Download_Blob(blob, 'whiteboard.svg');
 		set_export_message('SVG exported!');
 	}
 
 	function Handle_Export_PNG(): void {
-		const svg_el = document.querySelector('svg');
-		if (!svg_el) return;
-		const clone = svg_el.cloneNode(true) as SVGSVGElement;
-		clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-		const data = new XMLSerializer().serializeToString(clone);
+		const svg = Export_SVG_Element();
+		if (!svg) { set_export_message('Nothing to export'); return; }
+		const bounds = Content_Bounds()!;
+		const scale = 2; // 2x for crisp export
+		const data = new XMLSerializer().serializeToString(svg);
 		const img = new Image();
-		const view_box = svg_el.viewBox.baseVal;
-		const w = view_box.width || svg_el.clientWidth;
-		const h = view_box.height || svg_el.clientHeight;
 		img.onload = () => {
 			const canvas = document.createElement('canvas');
-			canvas.width = w * 2;
-			canvas.height = h * 2;
+			canvas.width = bounds.w * scale;
+			canvas.height = bounds.h * scale;
 			const ctx = canvas.getContext('2d');
 			if (!ctx) return;
 			ctx.fillStyle = '#ffffff';
