@@ -8,6 +8,9 @@ import { Canvas } from './canvas/Canvas';
 
 const msal_instance = new PublicClientApplication(msal_config);
 
+// MSAL must be initialized before use
+const msal_init = msal_instance.initialize();
+
 // Error boundary to catch and display React rendering errors
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
 	state = { error: null as Error | null };
@@ -32,6 +35,11 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 
 export function App() {
 	const [is_config_frame, set_config_frame] = useState(false);
+	const [msal_ready, set_msal_ready] = useState(false);
+
+	useEffect(() => {
+		msal_init.then(() => set_msal_ready(true));
+	}, []);
 
 	useEffect(() => {
 		async function Init_Teams() {
@@ -68,6 +76,8 @@ export function App() {
 
 		Init_Teams();
 	}, []);
+
+	if (!msal_ready) return null;
 
 	if (is_config_frame) {
 		return (
