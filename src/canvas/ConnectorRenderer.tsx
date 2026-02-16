@@ -24,12 +24,14 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 	const arrow_type = connector.arrow_type ?? 'forward';
 	const routing = connector.routing ?? 'ortho';
 
-	// Resolve port sides for perpendicular control points
+	// Resolve port sides and rotations for perpendicular control points
 	const source_side = Resolve_Port_Side(connector.source, shapes);
 	const target_side = Resolve_Port_Side(connector.target, shapes);
+	const source_rotation = Resolve_Rotation(connector.source, shapes);
+	const target_rotation = Resolve_Rotation(connector.target, shapes);
 
 	// Resolve control points for smooth routing
-	const cp = connector.control_points ?? Default_Control_Points(source, target, source_side, target_side);
+	const cp = connector.control_points ?? Default_Control_Points(source, target, source_side, target_side, source_rotation, target_rotation);
 
 	if (routing === 'smooth') {
 		// Cubic bézier spline
@@ -256,4 +258,10 @@ function Resolve_Port_Side(end: Connector['source'], shapes: Shape[]): string | 
 	if (!shape) return undefined;
 	const port = shape.ports.find(p => p.id === end.port_id);
 	return port?.side;
+}
+
+function Resolve_Rotation(end: Connector['source'], shapes: Shape[]): number | undefined {
+	if (!end.shape_id) return undefined;
+	const shape = shapes.find(s => s.id === end.shape_id);
+	return shape?.rotation || undefined;
 }

@@ -218,27 +218,44 @@ export function Snap_To_Grid(value: number, grid_size: number = DEFAULT_GRID_SIZ
 
 // Default bézier control points that leave the shape perpendicular to the port edge.
 // When port sides are provided, each CP extends outward from the endpoint in the
-// direction normal to that edge. Otherwise falls back to 1/3 and 2/3 along the line.
-export function Default_Control_Points(source: Point, target: Point, source_side?: string, target_side?: string): Point[] {
+// direction normal to that edge, rotated by the shape's rotation angle.
+// Otherwise falls back to 1/3 and 2/3 along the line.
+export function Default_Control_Points(source: Point, target: Point, source_side?: string, target_side?: string, source_rotation?: number, target_rotation?: number): Point[] {
 	const dist = Math.hypot(target.x - source.x, target.y - source.y);
 	const arm = Math.max(30, dist * 0.4);
 
-	function Extend(pt: Point, side: string | undefined, fallback_dx: number, fallback_dy: number): Point {
+	function Extend(pt: Point, side: string | undefined, fallback_dx: number, fallback_dy: number, rotation?: number): Point {
 		if (!side) return { x: pt.x + fallback_dx, y: pt.y + fallback_dy };
+
+		// Axis-aligned direction for this port side
+		let dx = 0, dy = 0;
 		switch (side) {
-			case 'top':    return { x: pt.x, y: pt.y - arm };
-			case 'bottom': return { x: pt.x, y: pt.y + arm };
-			case 'left':   return { x: pt.x - arm, y: pt.y };
-			case 'right':  return { x: pt.x + arm, y: pt.y };
+			case 'top':    dy = -arm; break;
+			case 'bottom': dy = arm; break;
+			case 'left':   dx = -arm; break;
+			case 'right':  dx = arm; break;
 			default:       return { x: pt.x + fallback_dx, y: pt.y + fallback_dy };
 		}
+
+		// Rotate the direction vector by the shape's rotation
+		if (rotation) {
+			const rad = rotation * Math.PI / 180;
+			const cos = Math.cos(rad);
+			const sin = Math.sin(rad);
+			const rdx = dx * cos - dy * sin;
+			const rdy = dx * sin + dy * cos;
+			dx = rdx;
+			dy = rdy;
+		}
+
+		return { x: pt.x + dx, y: pt.y + dy };
 	}
 
 	const dx = target.x - source.x;
 	const dy = target.y - source.y;
 	return [
-		Extend(source, source_side, dx * 0.33, dy * 0.33),
-		Extend(target, target_side, -dx * 0.33, -dy * 0.33),
+		Extend(source, source_side, dx * 0.33, dy * 0.33, source_rotation),
+		Extend(target, target_side, -dx * 0.33, -dy * 0.33, target_rotation),
 	];
 }
 

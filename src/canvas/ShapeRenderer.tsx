@@ -85,8 +85,8 @@ export function ShapeRenderer({
 			{/* Selection UI: dashed border + circular grab handles + rotate handle */}
 			{is_selected && <SelectionHandles x={x} y={y} width={width} height={height} />}
 
-			{/* Port indicators on hover */}
-			{(is_hovered || is_selected) && type !== 'text' && (
+			{/* Port indicators on hover only (not selected — they overlap resize handles) */}
+			{is_hovered && !is_selected && type !== 'text' && (
 				<PortIndicators shape={shape} />
 			)}
 		</g>

@@ -33,6 +33,12 @@ function Resolve_Port_Side_For_End(end: ConnectorEnd, shapes: Shape[]): string |
 	return shape?.ports.find(p => p.id === end.port_id)?.side;
 }
 
+function Resolve_Rotation_For_End(end: ConnectorEnd, shapes: Shape[]): number | undefined {
+	if (!end.shape_id) return undefined;
+	const shape = shapes.find(s => s.id === end.shape_id);
+	return shape?.rotation || undefined;
+}
+
 function Load_State(): CanvasState & { max_z: number } {
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
@@ -180,6 +186,11 @@ export function Canvas() {
 	const [collab_toast, set_collab_toast] = useState<string | null>(null);
 	const collab_ref = useRef<CollabSession | null>(null);
 
+	// Join room UI state
+	const [show_join_room, set_show_join_room] = useState(false);
+	const [join_room_code, set_join_room_code] = useState('');
+	const [join_room_name, set_join_room_name] = useState(localStorage.getItem('whitebored-user-name') || '');
+
 	// Check URL for room parameter on mount
 	useEffect(() => {
 		const params = new URLSearchParams(window.location.search);
@@ -291,6 +302,20 @@ export function Canvas() {
 		const url = new URL(window.location.href);
 		url.searchParams.set('room', room_id);
 		window.history.replaceState({}, '', url.toString());
+	}
+
+	function Handle_Join_Room(): void {
+		const code = join_room_code.trim();
+		if (!code) return;
+		const name = join_room_name.trim() || 'Anonymous';
+		localStorage.setItem('whitebored-user-name', name);
+		Start_Collab_Session(code, false);
+		// Add room to URL
+		const url = new URL(window.location.href);
+		url.searchParams.set('room', code);
+		window.history.replaceState({}, '', url.toString());
+		set_show_join_room(false);
+		set_join_room_code('');
 	}
 
 	// Broadcast operation to collaborators
@@ -799,7 +824,9 @@ export function Canvas() {
 				const target_pt = Resolve_Connector_End(c.target, shapes);
 				const src_side = Resolve_Port_Side_For_End(c.source, shapes);
 				const tgt_side = Resolve_Port_Side_For_End(c.target, shapes);
-				const cp = [...(c.control_points || Default_Control_Points(source_pt, target_pt, src_side, tgt_side))];
+				const src_rot = Resolve_Rotation_For_End(c.source, shapes);
+				const tgt_rot = Resolve_Rotation_For_End(c.target, shapes);
+				const cp = [...(c.control_points || Default_Control_Points(source_pt, target_pt, src_side, tgt_side, src_rot, tgt_rot))];
 				cp[ds.cp_index!] = canvas_pt;
 				return { ...c, control_points: cp };
 			}));
@@ -831,7 +858,9 @@ export function Canvas() {
 				const tgt_pt = Resolve_Connector_End(c.target, shapes);
 				const src_side = Resolve_Port_Side_For_End(c.source, shapes);
 				const tgt_side = Resolve_Port_Side_For_End(c.target, shapes);
-				const cp = [...(c.control_points || Default_Control_Points(src_pt, tgt_pt, src_side, tgt_side))];
+				const src_rot = Resolve_Rotation_For_End(c.source, shapes);
+				const tgt_rot = Resolve_Rotation_For_End(c.target, shapes);
+				const cp = [...(c.control_points || Default_Control_Points(src_pt, tgt_pt, src_side, tgt_side, src_rot, tgt_rot))];
 				if (orig_cp) {
 					cp[cp_index] = { x: orig_cp.x + dx, y: orig_cp.y + dy };
 				}
@@ -982,7 +1011,9 @@ export function Canvas() {
 				const tgt_pt = Resolve_Connector_End(c.target, shapes);
 				const src_side = Resolve_Port_Side_For_End(c.source, shapes);
 				const tgt_side = Resolve_Port_Side_For_End(c.target, shapes);
-				const defaults = Default_Control_Points(src_pt, tgt_pt, src_side, tgt_side);
+				const src_rot = Resolve_Rotation_For_End(c.source, shapes);
+				const tgt_rot = Resolve_Rotation_For_End(c.target, shapes);
+				const defaults = Default_Control_Points(src_pt, tgt_pt, src_side, tgt_side, src_rot, tgt_rot);
 				const cp = [...(c.control_points || defaults)];
 				const cp_index = ds.endpoint_end === 'source' ? 0 : 1;
 				cp[cp_index] = defaults[cp_index]; // perpendicular to the snapped port
@@ -1302,7 +1333,9 @@ export function Canvas() {
 		const tgt_pt = conn ? Resolve_Connector_End(conn.target, shapes) : canvas_pt;
 		const src_side = conn ? Resolve_Port_Side_For_End(conn.source, shapes) : undefined;
 		const tgt_side = conn ? Resolve_Port_Side_For_End(conn.target, shapes) : undefined;
-		const cps = conn?.control_points || Default_Control_Points(src_pt, tgt_pt, src_side, tgt_side);
+		const src_rot = conn ? Resolve_Rotation_For_End(conn.source, shapes) : undefined;
+		const tgt_rot = conn ? Resolve_Rotation_For_End(conn.target, shapes) : undefined;
+		const cps = conn?.control_points || Default_Control_Points(src_pt, tgt_pt, src_side, tgt_side, src_rot, tgt_rot);
 		const orig_cp = cps[cp_index];
 
 		Push_Undo();
@@ -1767,6 +1800,78 @@ export function Canvas() {
 				}}>
 					<div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4CAF50' }} />
 					{collab_toast}
+				</div>
+			)}
+
+			{/* Join Room UI — top-left overlay for Teams where URL pasting isn't possible */}
+			{!collab_session && (
+				<div style={{ position: 'absolute', top: 8, left: 8, zIndex: 100 }}>
+					{!show_join_room ? (
+						<button
+							onClick={() => set_show_join_room(true)}
+							style={{
+								background: '#fff', border: '1px solid #ccc', borderRadius: 8,
+								padding: '6px 12px', fontSize: 12, cursor: 'pointer',
+								display: 'flex', alignItems: 'center', gap: 6,
+								boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+							}}
+						>
+							🔗 Join Room
+						</button>
+					) : (
+						<div style={{
+							background: '#fff', border: '1px solid #c8e1ff', borderRadius: 10,
+							padding: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+							display: 'flex', flexDirection: 'column', gap: 8, width: 200,
+						}}>
+							<div style={{ fontSize: 13, fontWeight: 600 }}>Join a Room</div>
+							<input
+								type="text"
+								placeholder="Room code (e.g. abc123)"
+								value={join_room_code}
+								onChange={(e) => set_join_room_code(e.target.value)}
+								onKeyDown={(e) => { if (e.key === 'Enter') Handle_Join_Room(); if (e.key === 'Escape') set_show_join_room(false); e.stopPropagation(); }}
+								autoFocus
+								style={{
+									padding: '6px 8px', border: '1px solid #ccc', borderRadius: 6,
+									fontSize: 13, outline: 'none',
+								}}
+							/>
+							<input
+								type="text"
+								placeholder="Your name"
+								value={join_room_name}
+								onChange={(e) => set_join_room_name(e.target.value)}
+								onKeyDown={(e) => { if (e.key === 'Enter') Handle_Join_Room(); if (e.key === 'Escape') set_show_join_room(false); e.stopPropagation(); }}
+								style={{
+									padding: '6px 8px', border: '1px solid #ccc', borderRadius: 6,
+									fontSize: 13, outline: 'none',
+								}}
+							/>
+							<div style={{ display: 'flex', gap: 6 }}>
+								<button
+									onClick={Handle_Join_Room}
+									disabled={!join_room_code.trim()}
+									style={{
+										flex: 1, padding: '6px 0', background: join_room_code.trim() ? '#2196F3' : '#ccc',
+										color: '#fff', border: 'none', borderRadius: 6,
+										fontSize: 12, cursor: join_room_code.trim() ? 'pointer' : 'default',
+									}}
+								>
+									Join
+								</button>
+								<button
+									onClick={() => { set_show_join_room(false); set_join_room_code(''); }}
+									style={{
+										padding: '6px 10px', background: '#f5f5f5', border: '1px solid #ccc',
+										borderRadius: 6, fontSize: 12, cursor: 'pointer',
+									}}
+								>
+									Cancel
+								</button>
+							</div>
+						</div>
+					)}
 				</div>
 			)}
 
