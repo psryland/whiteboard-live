@@ -77,15 +77,22 @@ export function PropertiesPanel({
 	on_stop_sharing,
 }: PropertiesPanelProps) {
 	const [active_tab, set_active_tab] = useState<'style' | 'text' | 'arrange'>('style');
-	const [access_level, set_access_level] = useState<'edit' | 'view'>('edit');
 	const [copied, set_copied] = useState(false);
+	const [copied_code, set_copied_code] = useState(false);
 
 	function Handle_Copy_Link() {
 		if (!collab_session) return;
-		const url = Share_Url(collab_session.Room_Id) + `&access=${access_level}`;
+		const url = Share_Url(collab_session.Room_Id);
 		navigator.clipboard.writeText(url);
 		set_copied(true);
 		setTimeout(() => set_copied(false), 2000);
+	}
+
+	function Handle_Copy_Code() {
+		if (!collab_session) return;
+		navigator.clipboard.writeText(collab_session.Room_Id);
+		set_copied_code(true);
+		setTimeout(() => set_copied_code(false), 2000);
 	}
 
 	// Collaboration controls — positioned to overflow left of the panel
@@ -129,42 +136,44 @@ export function PropertiesPanel({
 				<div style={{
 					background: '#fff', border: '1px solid #c8e1ff', borderRadius: 10,
 					padding: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.1)', width: 260,
-					overflow: 'hidden', boxSizing: 'border-box',
+					boxSizing: 'border-box',
 				}} onPointerDown={e => e.stopPropagation()}>
-					<div style={{ fontSize: 11, fontWeight: 600, color: '#1565C0', marginBottom: 6 }}>
-						Share Link
+					{/* Room code */}
+					<div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+						<span style={{ fontSize: 11, fontWeight: 600, color: '#1565C0' }}>Room:</span>
+						<span style={{
+							fontSize: 13, fontWeight: 700, color: '#333', letterSpacing: '1.5px',
+							fontFamily: 'monospace',
+						}}>
+							{collab_session.Room_Id}
+						</span>
+						<button
+							onClick={Handle_Copy_Code}
+							style={{
+								padding: '2px 6px', borderRadius: 3, border: 'none',
+								background: copied_code ? '#4CAF50' : '#e3f2fd', color: copied_code ? '#fff' : '#1565C0',
+								fontSize: 10, cursor: 'pointer', transition: 'background 0.2s',
+							}}
+						>{copied_code ? '✓' : '📋'}</button>
 					</div>
+					{/* Share URL */}
 					<div style={{
 						fontSize: 10, color: '#666', background: '#f5f5f5', borderRadius: 4,
 						padding: '4px 6px', wordBreak: 'break-all', marginBottom: 8,
 						border: '1px solid #e0e0e0', lineHeight: 1.4,
-						overflow: 'hidden', maxWidth: '100%', boxSizing: 'border-box',
+						boxSizing: 'border-box',
 					}}>
 						{Share_Url(collab_session.Room_Id)}
 					</div>
-					<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-						<label style={{ fontSize: 11, color: '#555' }}>Access:</label>
-						<select
-							value={access_level}
-							onChange={e => set_access_level(e.target.value as 'edit' | 'view')}
-							style={{
-								flex: 1, padding: '3px 6px', borderRadius: 4, fontSize: 11,
-								border: '1px solid #ccc', background: '#fff', cursor: 'pointer',
-							}}
-						>
-							<option value="edit">Can edit</option>
-							<option value="view">View only</option>
-						</select>
-						<button
-							onClick={Handle_Copy_Link}
-							style={{
-								padding: '4px 10px', borderRadius: 4, border: 'none',
-								background: copied ? '#4CAF50' : '#2196F3', color: '#fff',
-								fontSize: 11, fontWeight: 600, cursor: 'pointer',
-								transition: 'background 0.2s',
-							}}
-						>{copied ? '✓ Copied' : '📋 Copy'}</button>
-					</div>
+					<button
+						onClick={Handle_Copy_Link}
+						style={{
+							width: '100%', padding: '4px 10px', borderRadius: 4, border: 'none',
+							background: copied ? '#4CAF50' : '#2196F3', color: '#fff',
+							fontSize: 11, fontWeight: 600, cursor: 'pointer',
+							transition: 'background 0.2s',
+						}}
+					>{copied ? '✓ Copied' : '📋 Copy Link'}</button>
 				</div>
 			)}
 		</div>
