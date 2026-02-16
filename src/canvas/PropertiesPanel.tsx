@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import type { Shape, ShapeStyle, Connector, ArrowType, ConnectorRouting } from './types';
+import type { Shape, ShapeStyle, Connector, ArrowType, ConnectorRouting, FreehandPath } from './types';
 
 interface PropertiesPanelProps {
 	selected_shapes: Shape[];
 	selected_connectors: Connector[];
+	selected_freehand: FreehandPath[];
 	on_style_change: (changes: Partial<ShapeStyle>) => void;
 	on_position_change: (changes: { x?: number; y?: number; width?: number; height?: number; rotation?: number }) => void;
 	on_text_change: (text: string) => void;
 	on_rounded_change: (rounded: boolean) => void;
 	on_z_order: (action: 'bring_front' | 'send_back' | 'bring_forward' | 'send_backward') => void;
 	on_connector_change: (changes: Partial<Pick<Connector, 'arrow_type' | 'routing'> & { stroke: string; stroke_width: number }>) => void;
+	on_freehand_change: (changes: Partial<{ stroke: string; stroke_width: number }>) => void;
 }
 
 const COLOUR_PAGES = [
@@ -53,17 +55,19 @@ const COLOUR_PAGES = [
 export function PropertiesPanel({
 	selected_shapes,
 	selected_connectors,
+	selected_freehand,
 	on_style_change,
 	on_position_change,
 	on_text_change,
 	on_rounded_change,
 	on_z_order,
 	on_connector_change,
+	on_freehand_change,
 }: PropertiesPanelProps) {
 	const [active_tab, set_active_tab] = useState<'style' | 'text' | 'arrange'>('style');
 
-	// Show connector panel if connectors are selected and no shapes
-	if (selected_connectors.length > 0 && selected_shapes.length === 0) {
+	// Show connector panel if connectors are selected and no shapes/freehand
+	if (selected_connectors.length > 0 && selected_shapes.length === 0 && selected_freehand.length === 0) {
 		return (
 			<div style={panel_style} onPointerDown={e => e.stopPropagation()}>
 				<div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
@@ -77,11 +81,26 @@ export function PropertiesPanel({
 		);
 	}
 
+	// Show freehand panel if freehand paths are selected and no shapes/connectors
+	if (selected_freehand.length > 0 && selected_shapes.length === 0 && selected_connectors.length === 0) {
+		return (
+			<div style={panel_style} onPointerDown={e => e.stopPropagation()}>
+				<div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
+					<FreehandTab
+						path={selected_freehand[0]}
+						on_freehand_change={on_freehand_change}
+						on_z_order={on_z_order}
+					/>
+				</div>
+			</div>
+		);
+	}
+
 	if (selected_shapes.length === 0) {
 		return (
 			<div style={panel_style}>
 				<div style={{ padding: 16, color: '#999', fontSize: 13, textAlign: 'center' }}>
-					Select a shape to edit its properties
+					Select an element to edit its properties
 				</div>
 			</div>
 		);
@@ -509,6 +528,73 @@ function ConnectorTab({ connector, on_connector_change, on_z_order }: {
 						</button>
 					))}
 				</div>
+			</div>
+
+			{/* Z-order */}
+			<div style={{ borderTop: '1px solid #e0e0e0', marginTop: 8, paddingTop: 8 }}>
+				<label style={{ ...label_style, marginBottom: 6, display: 'block' }}>Order</label>
+				<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+					<button onClick={() => on_z_order('bring_front')} style={z_btn_style}>⬆⬆ Front</button>
+					<button onClick={() => on_z_order('send_back')} style={z_btn_style}>⬇⬇ Back</button>
+					<button onClick={() => on_z_order('bring_forward')} style={z_btn_style}>⬆ Forward</button>
+					<button onClick={() => on_z_order('send_backward')} style={z_btn_style}>⬇ Backward</button>
+				</div>
+			</div>
+		</>
+	);
+}
+
+function FreehandTab({ path, on_freehand_change, on_z_order }: {
+	path: FreehandPath;
+	on_freehand_change: (changes: Partial<{ stroke: string; stroke_width: number }>) => void;
+	on_z_order: (action: 'bring_front' | 'send_back' | 'bring_forward' | 'send_backward') => void;
+}) {
+	return (
+		<>
+			<div style={{ fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+				Pen Stroke
+			</div>
+
+			{/* Colour */}
+			<div style={{ marginBottom: 10 }}>
+				<label style={label_style}>Colour</label>
+				<div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 3 }}>
+					{CONNECTOR_COLOURS.map(c => (
+						<div
+							key={c}
+							onClick={() => on_freehand_change({ stroke: c })}
+							style={{
+								width: 24, height: 24, borderRadius: 4,
+								background: c, cursor: 'pointer',
+								border: path.style.stroke === c ? '2px solid #2196F3' : '1px solid #ddd',
+								boxSizing: 'border-box',
+							}}
+						/>
+					))}
+				</div>
+				<div style={{ ...row_style, marginTop: 6 }}>
+					<input
+						type="color"
+						value={path.style.stroke}
+						onChange={e => on_freehand_change({ stroke: e.target.value })}
+						style={{ width: 28, height: 22, border: 'none', cursor: 'pointer', padding: 0 }}
+					/>
+					<span style={{ fontSize: 11, color: '#999' }}>Custom</span>
+				</div>
+			</div>
+
+			{/* Thickness */}
+			<div style={{ ...row_style, marginBottom: 10 }}>
+				<label style={label_style}>Thickness</label>
+				<input
+					type="range"
+					min={1}
+					max={10}
+					value={path.style.stroke_width}
+					onChange={e => on_freehand_change({ stroke_width: parseInt(e.target.value) })}
+					style={{ flex: 1, minWidth: 0 }}
+				/>
+				<span style={{ fontSize: 11, color: '#999', minWidth: 24 }}>{path.style.stroke_width}px</span>
 			</div>
 
 			{/* Z-order */}

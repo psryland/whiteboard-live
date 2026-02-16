@@ -327,6 +327,7 @@ export function Canvas() {
 	// ── Pointer events on the SVG background ──
 
 	const Handle_Canvas_PointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+		e.preventDefault(); // Prevent browser native drag behavior on SVG elements
 		// Freehand and laser tools should work even when clicking over existing objects
 		const on_background = (e.target as Element) === svg_ref.current;
 		if (!on_background && active_tool !== 'freehand' && active_tool !== 'laser') return;
@@ -512,6 +513,14 @@ export function Canvas() {
 					shapes.find(s => s.id === source_end.shape_id)!.ports.find(p => p.id === source_end.port_id)!
 				)
 				: { x: source_end.x, y: source_end.y };
+
+			// Show port indicators on shape under cursor
+			const hover_shape = shapes.find(s =>
+				canvas_pt.x >= s.x && canvas_pt.x <= s.x + s.width &&
+				canvas_pt.y >= s.y && canvas_pt.y <= s.y + s.height &&
+				s.id !== source_end.shape_id
+			);
+			set_hovered_shape_id(hover_shape?.id ?? null);
 			set_connector_preview({ from, to: canvas_pt });
 		} else if (ds.type === 'resize' && ds.resize_original && ds.resize_shape_id != null) {
 			const orig = ds.resize_original;
@@ -629,14 +638,23 @@ export function Canvas() {
 				return { ...c, control_points: cp };
 			}));
 		} else if (ds.type === 'endpoint_drag' && ds.endpoint_connector_id) {
-			// Update the connector endpoint in real-time during drag
+			// Snap to nearest port if cursor is over a shape, otherwise free-floating
+			const hover_shape = shapes.find(s =>
+				canvas_pt.x >= s.x && canvas_pt.x <= s.x + s.width &&
+				canvas_pt.y >= s.y && canvas_pt.y <= s.y + s.height
+			);
+			set_hovered_shape_id(hover_shape?.id ?? null);
+
+			const new_end: ConnectorEnd = hover_shape
+				? { shape_id: hover_shape.id, port_id: Nearest_Port(hover_shape, canvas_pt).id, x: 0, y: 0 }
+				: { shape_id: null, port_id: null, x: canvas_pt.x, y: canvas_pt.y };
+
 			set_connectors(prev => prev.map(c => {
 				if (c.id !== ds.endpoint_connector_id) return c;
-				const free_end: ConnectorEnd = { shape_id: null, port_id: null, x: canvas_pt.x, y: canvas_pt.y };
 				if (ds.endpoint_end === 'source') {
-					return { ...c, source: free_end, control_points: undefined };
+					return { ...c, source: new_end };
 				}
-				return { ...c, target: free_end, control_points: undefined };
+				return { ...c, target: new_end };
 			}));
 		} else if (ds.type === 'laser' && ds.laser_points) {
 			const now = Date.now();
@@ -737,20 +755,21 @@ export function Canvas() {
 		} else if (ds.type === 'cp_drag') {
 			// Control point drag complete
 		} else if (ds.type === 'endpoint_drag' && ds.endpoint_connector_id) {
-			// Snap to nearest port if over a shape, otherwise keep as free-floating
+			set_hovered_shape_id(null);
+			// Final snap — recalculate control points for the new position
 			const canvas_pt = Screen_To_Canvas(Get_SVG_Point(e), viewport);
 			const target_shape = shapes.find(s =>
 				canvas_pt.x >= s.x && canvas_pt.x <= s.x + s.width &&
 				canvas_pt.y >= s.y && canvas_pt.y <= s.y + s.height
 			);
-			if (target_shape) {
-				const snapped: ConnectorEnd = { shape_id: target_shape.id, port_id: Nearest_Port(target_shape, canvas_pt).id, x: 0, y: 0 };
-				set_connectors(prev => prev.map(c => {
-					if (c.id !== ds.endpoint_connector_id) return c;
-					if (ds.endpoint_end === 'source') return { ...c, source: snapped, control_points: undefined };
-					return { ...c, target: snapped, control_points: undefined };
-				}));
-			}
+			const final_end: ConnectorEnd = target_shape
+				? { shape_id: target_shape.id, port_id: Nearest_Port(target_shape, canvas_pt).id, x: 0, y: 0 }
+				: { shape_id: null, port_id: null, x: canvas_pt.x, y: canvas_pt.y };
+			set_connectors(prev => prev.map(c => {
+				if (c.id !== ds.endpoint_connector_id) return c;
+				if (ds.endpoint_end === 'source') return { ...c, source: final_end, control_points: undefined };
+				return { ...c, target: final_end, control_points: undefined };
+			}));
 		} else if (ds.type === 'laser') {
 			// Laser trail fades on its own via animation
 		}
@@ -763,6 +782,7 @@ export function Canvas() {
 	const Handle_Shape_PointerDown = useCallback((e: React.PointerEvent, shape: Shape) => {
 		// When drawing or using laser, let the event bubble up to the canvas handler
 		if (active_tool === 'freehand' || active_tool === 'laser') return;
+		e.preventDefault();
 
 		e.stopPropagation();
 		const screen_pt = Get_SVG_Point(e);
@@ -990,6 +1010,7 @@ export function Canvas() {
 	const Handle_Connector_PointerDown = useCallback((e: React.PointerEvent, connector: Connector) => {
 		if (active_tool === 'freehand' || active_tool === 'laser') return;
 
+		e.preventDefault();
 		e.stopPropagation();
 		if (e.shiftKey) {
 			set_selected_ids(prev => {
@@ -1054,6 +1075,7 @@ export function Canvas() {
 		// When drawing or using laser, let the event bubble up to the canvas handler
 		if (active_tool === 'freehand' || active_tool === 'laser') return;
 
+		e.preventDefault();
 		e.stopPropagation();
 		const screen_pt = Get_SVG_Point(e);
 		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
@@ -1114,6 +1136,7 @@ export function Canvas() {
 
 	const selected_shapes = shapes.filter(s => selected_ids.has(s.id));
 	const selected_connectors = connectors.filter(c => selected_ids.has(c.id));
+	const selected_freehand = freehand_paths.filter(f => selected_ids.has(f.id));
 
 	// Properties panel handlers
 	const Handle_Position_Change = useCallback((changes: { x?: number; y?: number; width?: number; height?: number; rotation?: number }) => {
@@ -1163,6 +1186,21 @@ export function Canvas() {
 				};
 			}
 			return updated;
+		}));
+	}, [selected_ids, Push_Undo]);
+
+	const Handle_Freehand_Change = useCallback((changes: Partial<{ stroke: string; stroke_width: number }>) => {
+		Push_Undo();
+		set_freehand_paths(prev => prev.map(f => {
+			if (!selected_ids.has(f.id)) return f;
+			return {
+				...f,
+				style: {
+					...f.style,
+					...(changes.stroke !== undefined && { stroke: changes.stroke }),
+					...(changes.stroke_width !== undefined && { stroke_width: changes.stroke_width }),
+				},
+			};
 		}));
 	}, [selected_ids, Push_Undo]);
 
@@ -1490,12 +1528,14 @@ export function Canvas() {
 			<PropertiesPanel
 				selected_shapes={selected_shapes}
 				selected_connectors={selected_connectors}
+				selected_freehand={selected_freehand}
 				on_style_change={Apply_Style_Change}
 				on_position_change={Handle_Position_Change}
 				on_text_change={Handle_Panel_Text_Change}
 				on_rounded_change={Handle_Rounded_Change}
 				on_z_order={Handle_Z_Order}
 				on_connector_change={Handle_Connector_Change}
+				on_freehand_change={Handle_Freehand_Change}
 			/>
 		</div>
 	);
