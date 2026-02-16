@@ -129,6 +129,7 @@ export function PropertiesPanel({
 				<div style={{
 					background: '#fff', border: '1px solid #c8e1ff', borderRadius: 10,
 					padding: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.1)', width: 260,
+					overflow: 'hidden', boxSizing: 'border-box',
 				}} onPointerDown={e => e.stopPropagation()}>
 					<div style={{ fontSize: 11, fontWeight: 600, color: '#1565C0', marginBottom: 6 }}>
 						Share Link
@@ -137,6 +138,7 @@ export function PropertiesPanel({
 						fontSize: 10, color: '#666', background: '#f5f5f5', borderRadius: 4,
 						padding: '4px 6px', wordBreak: 'break-all', marginBottom: 8,
 						border: '1px solid #e0e0e0', lineHeight: 1.4,
+						overflow: 'hidden', maxWidth: '100%', boxSizing: 'border-box',
 					}}>
 						{Share_Url(collab_session.Room_Id)}
 					</div>
