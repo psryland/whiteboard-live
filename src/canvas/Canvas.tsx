@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle, FreehandPath, LaserPoint, ToolSettings } from './types';
+import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle, FreehandPath, LaserPoint, ToolSettings, CollabUser } from './types';
 import { DEFAULT_STYLE, DEFAULT_TOOL_SETTINGS } from './types';
 import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, DEFAULT_GRID_SIZE, DEFAULT_GRID_MAJOR_MULT, Freehand_Bounds, Simplify_Points, Smooth_Points, Get_Svg_Path_From_Stroke, Default_Control_Points } from './helpers';
 import { getStroke } from 'perfect-freehand';
@@ -9,6 +9,8 @@ import { ConnectorRenderer } from './ConnectorRenderer';
 import { Toolbar } from './Toolbar';
 import { BoardPanel } from './BoardPanel';
 import { PropertiesPanel } from './PropertiesPanel';
+import { CollabSession, Generate_Room_Id, Share_Url } from './Collaboration';
+import { RemoteCursors, PresenceAvatars } from './RemoteCursors';
 
 const STORAGE_KEY = 'whitebored-of-peace';
 
@@ -159,6 +161,123 @@ export function Canvas() {
 	const [laser_trail, set_laser_trail] = useState<LaserPoint[]>([]);
 	const laser_raf = useRef<number>(0);
 
+	// ── Collaboration state ──
+	const [collab_session, set_collab_session] = useState<CollabSession | null>(null);
+	const [remote_users, set_remote_users] = useState<CollabUser[]>([]);
+	const [collab_connected, set_collab_connected] = useState(false);
+	const [collab_toast, set_collab_toast] = useState<string | null>(null);
+	const collab_ref = useRef<CollabSession | null>(null);
+
+	// Check URL for room parameter on mount
+	useEffect(() => {
+		const params = new URLSearchParams(window.location.search);
+		const room = params.get('room');
+		if (room) {
+			Start_Collab_Session(room, false);
+		}
+	}, []);
+
+	// Clean up collab toast
+	useEffect(() => {
+		if (!collab_toast) return;
+		const t = setTimeout(() => set_collab_toast(null), 3000);
+		return () => clearTimeout(t);
+	}, [collab_toast]);
+
+	function Start_Collab_Session(room_id: string, is_host: boolean): void {
+		if (collab_ref.current) {
+			collab_ref.current.Disconnect();
+		}
+
+		const session = new CollabSession(room_id, {
+			on_user_join: (user) => {
+				set_remote_users(prev => [...prev.filter(u => u.id !== user.id), user]);
+				set_collab_toast(`${user.name} joined`);
+			},
+			on_user_leave: (user_id) => {
+				set_remote_users(prev => {
+					const leaving = prev.find(u => u.id === user_id);
+					if (leaving) set_collab_toast(`${leaving.name} left`);
+					return prev.filter(u => u.id !== user_id);
+				});
+			},
+			on_cursor_move: (user_id, cursor) => {
+				set_remote_users(prev => prev.map(u =>
+					u.id === user_id ? { ...u, cursor, status: 'editing' } : u
+				));
+			},
+			on_state_sync: (state) => {
+				set_shapes(state.shapes || []);
+				set_connectors(state.connectors || []);
+				set_freehand_paths(state.freehand_paths || []);
+				const max_z = Math.max(0,
+					...(state.shapes || []).map(s => s.z_index ?? 0),
+					...(state.connectors || []).map(c => c.z_index ?? 0),
+					...(state.freehand_paths || []).map(f => f.z_index ?? 0),
+				);
+				z_counter.current = max_z;
+				undo_mgr.Clear();
+			},
+			on_operation: (msg) => {
+				const { type, payload } = msg;
+				if (type === 'op_add') {
+					if (payload.kind === 'shape') set_shapes(prev => [...prev, payload.item]);
+					else if (payload.kind === 'connector') set_connectors(prev => [...prev, payload.item]);
+					else if (payload.kind === 'freehand') set_freehand_paths(prev => [...prev, payload.item]);
+				} else if (type === 'op_update') {
+					if (payload.kind === 'shape') set_shapes(prev => prev.map(s => s.id === payload.item.id ? payload.item : s));
+					else if (payload.kind === 'connector') set_connectors(prev => prev.map(c => c.id === payload.item.id ? payload.item : c));
+					else if (payload.kind === 'freehand') set_freehand_paths(prev => prev.map(f => f.id === payload.item.id ? payload.item : f));
+				} else if (type === 'op_delete') {
+					const ids = new Set(payload.ids as string[]);
+					set_shapes(prev => prev.filter(s => !ids.has(s.id)));
+					set_connectors(prev => prev.filter(c => !ids.has(c.id)));
+					set_freehand_paths(prev => prev.filter(f => !ids.has(f.id)));
+				}
+			},
+			on_state_requested: () => ({ shapes, connectors, freehand_paths }),
+			on_connection_change: (connected) => set_collab_connected(connected),
+		}, is_host);
+
+		collab_ref.current = session;
+		set_collab_session(session);
+		session.Connect();
+	}
+
+	function Stop_Collab_Session(): void {
+		if (collab_ref.current) {
+			collab_ref.current.Disconnect();
+			collab_ref.current = null;
+		}
+		set_collab_session(null);
+		set_remote_users([]);
+		set_collab_connected(false);
+		// Remove room from URL
+		const url = new URL(window.location.href);
+		url.searchParams.delete('room');
+		window.history.replaceState({}, '', url.toString());
+	}
+
+	function Handle_Start_Sharing(): void {
+		const room_id = Generate_Room_Id();
+		Start_Collab_Session(room_id, true);
+		// Add room to URL
+		const url = new URL(window.location.href);
+		url.searchParams.set('room', room_id);
+		window.history.replaceState({}, '', url.toString());
+	}
+
+	// Broadcast operation to collaborators
+	function Broadcast_Add(kind: 'shape' | 'connector' | 'freehand', item: any): void {
+		collab_ref.current?.Send_Operation('op_add', { kind, item });
+	}
+	function Broadcast_Update(kind: 'shape' | 'connector' | 'freehand', item: any): void {
+		collab_ref.current?.Send_Operation('op_update', { kind, item });
+	}
+	function Broadcast_Delete(ids: string[]): void {
+		collab_ref.current?.Send_Operation('op_delete', { ids });
+	}
+
 	// Persist state on change
 	useEffect(() => {
 		Save_State({ shapes, connectors, freehand_paths });
@@ -200,6 +319,7 @@ export function Canvas() {
 	const Delete_Selected = useCallback(() => {
 		if (selected_ids.size === 0) return;
 		Push_Undo();
+		const ids_to_delete = Array.from(selected_ids);
 		set_shapes(prev => prev.filter(s => !selected_ids.has(s.id)));
 		// Also remove connectors attached to deleted shapes
 		set_connectors(prev => prev.filter(c =>
@@ -209,6 +329,7 @@ export function Canvas() {
 		));
 		set_freehand_paths(prev => prev.filter(p => !selected_ids.has(p.id)));
 		set_selected_ids(new Set());
+		Broadcast_Delete(ids_to_delete);
 	}, [selected_ids, Push_Undo]);
 
 	// Duplicate selected shapes with a small offset
@@ -279,9 +400,12 @@ export function Canvas() {
 	// Apply colour changes to selected shapes
 	const Apply_Style_Change = useCallback((changes: Partial<ShapeStyle>) => {
 		Push_Undo();
-		set_shapes(prev => prev.map(s =>
-			selected_ids.has(s.id) ? { ...s, style: { ...s.style, ...changes } } : s
-		));
+		set_shapes(prev => prev.map(s => {
+			if (!selected_ids.has(s.id)) return s;
+			const updated = { ...s, style: { ...s.style, ...changes } };
+			Broadcast_Update('shape', updated);
+			return updated;
+		}));
 	}, [selected_ids, Push_Undo]);
 
 	// Quick-connect: auto-create arrow between two shapes
@@ -298,7 +422,7 @@ export function Canvas() {
 		const tgt_port = Nearest_Port(tgt, src_centre);
 
 		Push_Undo();
-		set_connectors(prev => [...prev, {
+		const new_connector: Connector = {
 			id: Generate_Id('c'),
 			source: { shape_id: source_id, port_id: src_port.id, x: 0, y: 0 },
 			target: { shape_id: target_id, port_id: tgt_port.id, x: 0, y: 0 },
@@ -306,7 +430,9 @@ export function Canvas() {
 			routing: tool_settings.connector_routing,
 			style: { stroke: '#333333', stroke_width: tool_settings.connector_thickness },
 			z_index: Next_Z(),
-		}]);
+		};
+		set_connectors(prev => [...prev, new_connector]);
+		Broadcast_Add('connector', new_connector);
 	}, [shapes, Push_Undo, tool_settings]);
 
 	const Handle_Tool_Settings_Change = useCallback((changes: Partial<ToolSettings>) => {
@@ -392,6 +518,7 @@ export function Canvas() {
 					z_index: Next_Z(),
 				};
 				set_shapes(prev => [...prev, new_shape]);
+				Broadcast_Add('shape', new_shape);
 				set_selected_ids(new Set([new_shape.id]));
 				editing_started_at.current = Date.now();
 				set_editing_shape_id(new_shape.id);
@@ -453,10 +580,14 @@ export function Canvas() {
 
 	const Handle_Canvas_PointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
 		const ds = drag_state.current;
-		if (ds.type === 'none') return;
 
+		// Broadcast cursor position even when not dragging
 		const screen_pt = Get_SVG_Point(e);
 		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
+		collab_ref.current?.Send_Cursor(canvas_pt);
+
+		if (ds.type === 'none') return;
+
 		ds.moved = true;
 
 		if (ds.type === 'pan' && ds.start_viewport) {
@@ -706,6 +837,7 @@ export function Canvas() {
 				const without = prev.filter(s => s.id !== shape.id);
 				return [...without, shape];
 			});
+			Broadcast_Add('shape', shape);
 			set_selected_ids(new Set([shape.id]));
 			set_active_tool('select');
 		} else if (ds.type === 'marquee' && ds.marquee_start) {
@@ -753,13 +885,26 @@ export function Canvas() {
 					z_index: Next_Z(),
 				};
 				set_connectors(prev => [...prev, new_connector]);
+				Broadcast_Add('connector', new_connector);
 			}
 		} else if (ds.type === 'move') {
-			// Move complete — nothing special needed
+			// Broadcast updated shapes and connectors after move
+			for (const id of selected_ids) {
+				const s = shapes.find(sh => sh.id === id);
+				if (s) Broadcast_Update('shape', s);
+			}
 		} else if (ds.type === 'resize') {
-			// Resize complete
+			// Broadcast resized shape
+			for (const id of selected_ids) {
+				const s = shapes.find(sh => sh.id === id);
+				if (s) Broadcast_Update('shape', s);
+			}
 		} else if (ds.type === 'rotate') {
-			// Rotate complete
+			// Broadcast rotated shape
+			for (const id of selected_ids) {
+				const s = shapes.find(sh => sh.id === id);
+				if (s) Broadcast_Update('shape', s);
+			}
 		} else if (ds.type === 'freehand' && ds.freehand_points) {
 			// Finalize freehand path — simplify then smooth for natural-looking curves
 			if (ds.freehand_points.length > 1) {
@@ -772,22 +917,40 @@ export function Canvas() {
 					z_index: Next_Z(),
 				};
 				set_freehand_paths(prev => [...prev.filter(p => p.id !== '__drawing__'), path]);
+				Broadcast_Add('freehand', path);
 			} else {
 				set_freehand_paths(prev => prev.filter(p => p.id !== '__drawing__'));
 			}
 		} else if (ds.type === 'freehand_move') {
-			// Move complete
+			// Broadcast moved freehand path
+			for (const id of selected_ids) {
+				const fp = freehand_paths.find(f => f.id === id);
+				if (fp) Broadcast_Update('freehand', fp);
+			}
 		} else if (ds.type === 'freehand_resize') {
-			// Resize complete
+			// Broadcast resized freehand path
+			for (const id of selected_ids) {
+				const fp = freehand_paths.find(f => f.id === id);
+				if (fp) Broadcast_Update('freehand', fp);
+			}
 		} else if (ds.type === 'cp_drag') {
-			// Control point drag complete
+			// Broadcast updated connector after CP drag
+			if (ds.cp_connector_id) {
+				const c = connectors.find(cn => cn.id === ds.cp_connector_id);
+				if (c) Broadcast_Update('connector', c);
+			}
 		} else if (ds.type === 'endpoint_drag' && ds.endpoint_connector_id) {
 			set_hovered_shape_id(null);
 			// If snapped to a shape port, recalculate the dragged end's CP to be perpendicular
+			const ep_connector_id = ds.endpoint_connector_id;
 			set_connectors(prev => prev.map(c => {
-				if (c.id !== ds.endpoint_connector_id) return c;
+				if (c.id !== ep_connector_id) return c;
 				const end = ds.endpoint_end === 'source' ? c.source : c.target;
-				if (!end.shape_id || !end.port_id) return c; // free-floating — keep translated CPs
+				if (!end.shape_id || !end.port_id) {
+					// free-floating — keep translated CPs, broadcast current state
+					Broadcast_Update('connector', c);
+					return c;
+				}
 
 				const src_pt = Resolve_Connector_End(c.source, shapes);
 				const tgt_pt = Resolve_Connector_End(c.target, shapes);
@@ -797,7 +960,9 @@ export function Canvas() {
 				const cp = [...(c.control_points || defaults)];
 				const cp_index = ds.endpoint_end === 'source' ? 0 : 1;
 				cp[cp_index] = defaults[cp_index]; // perpendicular to the snapped port
-				return { ...c, control_points: cp };
+				const updated = { ...c, control_points: cp };
+				Broadcast_Update('connector', updated);
+				return updated;
 			}));
 		} else if (ds.type === 'laser') {
 			// Laser trail fades on its own via animation
@@ -1235,6 +1400,7 @@ export function Canvas() {
 					...(changes.stroke_width !== undefined && { stroke_width: changes.stroke_width }),
 				};
 			}
+			Broadcast_Update('connector', updated);
 			return updated;
 		}));
 	}, [selected_ids, Push_Undo]);
@@ -1243,7 +1409,7 @@ export function Canvas() {
 		Push_Undo();
 		set_freehand_paths(prev => prev.map(f => {
 			if (!selected_ids.has(f.id)) return f;
-			return {
+			const updated = {
 				...f,
 				style: {
 					...f.style,
@@ -1251,6 +1417,8 @@ export function Canvas() {
 					...(changes.stroke_width !== undefined && { stroke_width: changes.stroke_width }),
 				},
 			};
+			Broadcast_Update('freehand', updated);
+			return updated;
 		}));
 	}, [selected_ids, Push_Undo]);
 
@@ -1324,7 +1492,33 @@ export function Canvas() {
 				can_undo={undo_mgr.Can_Undo}
 				can_redo={undo_mgr.Can_Redo}
 				has_selection={selected_ids.size > 0}
-			/>
+			>
+				{/* Collaboration controls in toolbar */}
+				{collab_session && (
+					<PresenceAvatars users={remote_users} self_name={collab_session.User_Name} />
+				)}
+				{!collab_session ? (
+					<button
+						onClick={Handle_Start_Sharing}
+						style={{
+							padding: '6px 14px', borderRadius: 8, border: 'none',
+							background: '#2196F3', color: '#fff', fontSize: 12,
+							fontWeight: 600, cursor: 'pointer', display: 'flex',
+							alignItems: 'center', gap: 6, marginLeft: 8, whiteSpace: 'nowrap',
+						}}
+					>🔗 Share</button>
+				) : (
+					<button
+						onClick={Stop_Collab_Session}
+						style={{
+							padding: '6px 14px', borderRadius: 8, border: 'none',
+							background: collab_connected ? '#4CAF50' : '#ff9800',
+							color: '#fff', fontSize: 12, fontWeight: 600,
+							cursor: 'pointer', marginLeft: 8, whiteSpace: 'nowrap',
+						}}
+					>{collab_connected ? '● Live' : '○ Connecting...'}</button>
+				)}
+			</Toolbar>
 
 			<BoardPanel
 				is_open={show_board_panel}
@@ -1543,6 +1737,57 @@ export function Canvas() {
 					/>
 				)}
 			</svg>
+
+			{/* Remote cursors overlay (rendered in screen space on top of SVG) */}
+			{remote_users.length > 0 && (
+				<svg style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 50 }}>
+					<RemoteCursors users={remote_users} viewport={viewport} />
+				</svg>
+			)}
+
+			{/* Collaboration toast */}
+			{collab_toast && (
+				<div style={{
+					position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+					background: '#333', color: '#fff', padding: '8px 20px', borderRadius: 20,
+					fontSize: 12, display: 'flex', alignItems: 'center', gap: 8,
+					boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 100,
+				}}>
+					<div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4CAF50' }} />
+					{collab_toast}
+				</div>
+			)}
+
+			{/* Collab share link panel */}
+			{collab_session && collab_connected && (
+				<div style={{
+					position: 'absolute', top: 56, right: 8, background: '#fff',
+					border: '1px solid #c8e1ff', borderRadius: 10, padding: 10,
+					boxShadow: '0 2px 8px rgba(0,0,0,0.1)', zIndex: 95, width: 240,
+				}} onPointerDown={e => e.stopPropagation()}>
+					<div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+						<div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4CAF50' }} />
+						<span style={{ fontSize: 12, fontWeight: 600, color: '#1565C0' }}>Live Session</span>
+						<span style={{ flex: 1 }} />
+						<button
+							onClick={() => {
+								navigator.clipboard.writeText(Share_Url(collab_session.Room_Id));
+								set_collab_toast('Link copied!');
+							}}
+							style={{
+								padding: '3px 8px', border: '1px solid #c8e1ff', borderRadius: 4,
+								fontSize: 10, cursor: 'pointer', background: '#fff', color: '#1565C0', fontWeight: 600,
+							}}
+						>📋 Copy Link</button>
+					</div>
+					<div style={{ fontSize: 10, color: '#888', wordBreak: 'break-all', marginBottom: 6 }}>
+						{Share_Url(collab_session.Room_Id)}
+					</div>
+					<div style={{ fontSize: 11, color: '#555' }}>
+						{remote_users.length + 1} participant{remote_users.length !== 0 ? 's' : ''}
+					</div>
+				</div>
+			)}
 
 			{/* Text editing overlay */}
 			{editing_shape && (

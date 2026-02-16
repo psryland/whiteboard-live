@@ -147,3 +147,34 @@ export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
 	arrow_type: 'forward',
 	laser_color: '#ff2222',
 };
+
+// ── Collaboration types ──
+
+export interface CollabUser {
+	id: string;
+	name: string;
+	colour: string;
+	cursor?: Point;
+	status: 'editing' | 'viewing' | 'idle';
+	permission: 'edit' | 'view';
+}
+
+export type CollabMessageType =
+	| 'join'
+	| 'leave'
+	| 'cursor'
+	| 'state_sync'
+	| 'op_add'
+	| 'op_update'
+	| 'op_delete'
+	| 'request_state';
+
+export interface CollabMessage {
+	type: CollabMessageType;
+	sender_id: string;
+	sender_name: string;
+	sender_colour: string;
+	room_id: string;
+	payload: any;
+	timestamp: number;
+}
