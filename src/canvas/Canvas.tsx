@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle, FreehandPath, LaserPoint } from './types';
-import { DEFAULT_STYLE } from './types';
+import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle, FreehandPath, LaserPoint, ToolSettings } from './types';
+import { DEFAULT_STYLE, DEFAULT_TOOL_SETTINGS } from './types';
 import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, DEFAULT_GRID_SIZE, DEFAULT_GRID_MAJOR_MULT, Freehand_Bounds, Simplify_Points, Smooth_Points, Get_Svg_Path_From_Stroke } from './helpers';
 import { getStroke } from 'perfect-freehand';
 import { UndoManager } from './undo';
 import { ShapeRenderer } from './ShapeRenderer';
 import { ConnectorRenderer } from './ConnectorRenderer';
 import { Toolbar } from './Toolbar';
-import { ColourPicker } from './ColourPicker';
 import { ShapePalette } from './ShapePalette';
 import { PropertiesPanel } from './PropertiesPanel';
 
@@ -18,9 +17,15 @@ function Load_State(): CanvasState {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (raw) {
 			const parsed = JSON.parse(raw);
-			// Migrate shapes missing the rotation field
-			const shapes = (parsed.shapes || []).map((s: any) => ({ rotation: 0, ...s }));
-			return { shapes, connectors: parsed.connectors || [], freehand_paths: parsed.freehand_paths || [] };
+			// Migrate shapes missing the rotation field or rounded style
+			const shapes = (parsed.shapes || []).map((s: any) => ({
+				rotation: 0,
+				...s,
+				style: { rounded: false, ...s.style },
+			}));
+			// Migrate connectors missing arrow_type
+			const connectors = (parsed.connectors || []).map((c: any) => ({ arrow_type: 'forward' as const, ...c }));
+			return { shapes, connectors, freehand_paths: parsed.freehand_paths || [] };
 		}
 	} catch { /* ignore */ }
 	return { shapes: [], connectors: [], freehand_paths: [] };
@@ -93,8 +98,10 @@ export function Canvas() {
 	const text_input_ref = useRef<HTMLInputElement>(null);
 	const editing_started_at = useRef<number>(0);
 
-	// Colour picker
-	const [show_colour_picker, set_show_colour_picker] = useState(false);
+	// Colour picker removed — colours now in toolbar dropdowns
+
+	// Tool settings for pen, text, shape, connector, laser
+	const [tool_settings, set_tool_settings] = useState<ToolSettings>(DEFAULT_TOOL_SETTINGS);
 
 	// Shape palette sidebar
 	const [show_shape_palette, set_show_shape_palette] = useState(false);
@@ -250,9 +257,18 @@ export function Canvas() {
 			id: Generate_Id('c'),
 			source: { shape_id: source_id, port_id: src_port.id, x: 0, y: 0 },
 			target: { shape_id: target_id, port_id: tgt_port.id, x: 0, y: 0 },
-			style: { stroke: '#333333', stroke_width: 2 },
+			arrow_type: tool_settings.arrow_type,
+			style: { stroke: '#333333', stroke_width: tool_settings.connector_thickness },
 		}]);
-	}, [shapes, Push_Undo]);
+	}, [shapes, Push_Undo, tool_settings]);
+
+	const Handle_Tool_Settings_Change = useCallback((changes: Partial<ToolSettings>) => {
+		set_tool_settings(prev => ({ ...prev, ...changes }));
+		// If shape_type changed, also change active tool
+		if (changes.shape_type) {
+			set_active_tool(changes.shape_type);
+		}
+	}, []);
 
 	// Get SVG-relative mouse position
 	const Get_SVG_Point = useCallback((e: React.MouseEvent | PointerEvent | MouseEvent): Point => {
@@ -314,7 +330,7 @@ export function Canvas() {
 					height: 30,
 					rotation: 0,
 					text: '',
-					style: { ...DEFAULT_STYLE, fill: 'none', stroke: 'none', stroke_width: 0 },
+					style: { ...DEFAULT_STYLE, fill: 'none', stroke: 'none', stroke_width: 0, font_size: tool_settings.text_size, text_colour: tool_settings.text_color },
 					ports: Default_Ports(),
 				};
 				set_shapes(prev => [...prev, new_shape]);
@@ -374,7 +390,7 @@ export function Canvas() {
 				};
 			}
 		}
-	}, [viewport, active_tool, Get_SVG_Point]);
+	}, [viewport, active_tool, Get_SVG_Point, tool_settings]);
 
 	const Handle_Canvas_PointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
 		const ds = drag_state.current;
@@ -494,7 +510,7 @@ export function Canvas() {
 			// Live preview by updating freehand paths
 			set_freehand_paths(prev => {
 				const without = prev.filter(p => p.id !== '__drawing__');
-				return [...without, { id: '__drawing__', points: [...ds.freehand_points!], style: { stroke: '#333333', stroke_width: 2 } }];
+				return [...without, { id: '__drawing__', points: [...ds.freehand_points!], style: { stroke: tool_settings.pen_color, stroke_width: tool_settings.pen_size } }];
 			});
 		} else if (ds.type === 'freehand_move' && ds.freehand_path_origins) {
 			ds.moved = true;
@@ -540,7 +556,7 @@ export function Canvas() {
 			ds.laser_points.push({ ...canvas_pt, timestamp: now });
 			set_laser_trail(prev => [...prev.filter(p => p.timestamp > now - 1500), { ...canvas_pt, timestamp: now }]);
 		}
-	}, [viewport, shapes, Get_SVG_Point]);
+	}, [viewport, shapes, Get_SVG_Point, tool_settings]);
 
 	const Handle_Canvas_PointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
 		const ds = drag_state.current;
@@ -597,7 +613,8 @@ export function Canvas() {
 						x: 0,
 						y: 0,
 					},
-					style: { stroke: '#333333', stroke_width: 2 },
+					arrow_type: tool_settings.arrow_type,
+					style: { stroke: '#333333', stroke_width: tool_settings.connector_thickness },
 				};
 				set_connectors(prev => [...prev, new_connector]);
 			}
@@ -615,7 +632,7 @@ export function Canvas() {
 				const path: FreehandPath = {
 					id: Generate_Id('f'),
 					points: smoothed,
-					style: { stroke: '#333333', stroke_width: 2 },
+					style: { stroke: tool_settings.pen_color, stroke_width: tool_settings.pen_size },
 				};
 				set_freehand_paths(prev => [...prev.filter(p => p.id !== '__drawing__'), path]);
 			} else {
@@ -630,7 +647,7 @@ export function Canvas() {
 		}
 
 		drag_state.current = { type: 'none', start_canvas: { x: 0, y: 0 }, start_screen: { x: 0, y: 0 } };
-	}, [shapes, viewport, Push_Undo, Get_SVG_Point]);
+	}, [shapes, viewport, Push_Undo, Get_SVG_Point, tool_settings]);
 
 	// ── Shape pointer events ──
 
@@ -832,7 +849,6 @@ export function Canvas() {
 				case 'Escape':
 					set_selected_ids(new Set());
 					set_active_tool('select');
-					set_show_colour_picker(false);
 					break;
 				case 'F2':
 					// Edit text of selected shape
@@ -844,23 +860,18 @@ export function Canvas() {
 					e.preventDefault();
 					break;
 				case 'v': case 'V': set_active_tool('select'); break;
-				case 'r': case 'R': set_active_tool('rectangle'); break;
-				case 'o': case 'O': set_active_tool('ellipse'); break;
-				case 'd': case 'D': set_active_tool('diamond'); break;
+				case 's': case 'S': set_active_tool(tool_settings.shape_type); break;
 				case 't': case 'T': set_active_tool('text'); break;
 				case 'a': case 'A': set_active_tool('arrow'); break;
 				case 'p': case 'P': set_active_tool('freehand'); break;
 				case 'l': case 'L': set_active_tool('laser'); break;
 				case 'g': case 'G': set_snap_enabled(prev => !prev); break;
-				case 'c': case 'C':
-					if (selected_ids.size > 0) set_show_colour_picker(prev => !prev);
-					break;
 			}
 		}
 
 		window.addEventListener('keydown', On_KeyDown);
 		return () => window.removeEventListener('keydown', On_KeyDown);
-	}, [editing_shape_id, shapes, Do_Undo, Do_Redo, Delete_Selected, Copy_Selected, Paste, Duplicate_Selected]);
+	}, [editing_shape_id, shapes, Do_Undo, Do_Redo, Delete_Selected, Copy_Selected, Paste, Duplicate_Selected, tool_settings.shape_type]);
 
 	// Connector click handler
 	const Handle_Connector_PointerDown = useCallback((e: React.PointerEvent, connector: Connector) => {
@@ -937,14 +948,6 @@ export function Canvas() {
 	// The editing shape (for text input overlay)
 	const editing_shape = editing_shape_id ? shapes.find(s => s.id === editing_shape_id) : null;
 
-	// Get the style of the first selected shape (for the colour picker)
-	const selected_shape_style = (() => {
-		for (const s of shapes) {
-			if (selected_ids.has(s.id)) return s.style;
-		}
-		return DEFAULT_STYLE;
-	})();
-
 	const selected_shapes = shapes.filter(s => selected_ids.has(s.id));
 
 	// Properties panel handlers
@@ -969,32 +972,31 @@ export function Canvas() {
 		));
 	}, [selected_ids]);
 
+	const Handle_Rounded_Change = useCallback((rounded: boolean) => {
+		Push_Undo();
+		set_shapes(prev => prev.map(s =>
+			selected_ids.has(s.id) ? { ...s, style: { ...s.style, rounded } } : s
+		));
+	}, [selected_ids, Push_Undo]);
+
 	return (
 		<div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#f8f9fa' }}>
 			<Toolbar
 				active_tool={active_tool}
 				on_tool_change={set_active_tool}
-				on_undo={Do_Undo}
-				on_redo={Do_Redo}
-				on_delete={Delete_Selected}
-				on_toggle_colour_picker={() => set_show_colour_picker(prev => !prev)}
-				on_duplicate={Duplicate_Selected}
+				tool_settings={tool_settings}
+				on_tool_settings_change={Handle_Tool_Settings_Change}
 				snap_enabled={snap_enabled}
 				on_toggle_snap={() => set_snap_enabled(prev => !prev)}
 				grid_size={grid_size}
 				on_grid_size_change={set_grid_size}
+				on_undo={Do_Undo}
+				on_redo={Do_Redo}
+				on_delete={Delete_Selected}
 				can_undo={undo_mgr.Can_Undo}
 				can_redo={undo_mgr.Can_Redo}
 				has_selection={selected_ids.size > 0}
 			/>
-
-			{show_colour_picker && selected_ids.size > 0 && (
-				<ColourPicker
-					style={selected_shape_style}
-					on_change={Apply_Style_Change}
-					on_close={() => set_show_colour_picker(false)}
-				/>
-			)}
 
 			<ShapePalette
 				on_select_tool={(tool) => { set_active_tool(tool); set_show_shape_palette(false); }}
@@ -1157,6 +1159,7 @@ export function Canvas() {
 					{laser_trail.length > 0 && (() => {
 						const now = Date.now();
 						const last = laser_trail[laser_trail.length - 1];
+						const lc = tool_settings.laser_color;
 						return (
 							<>
 								{/* Trail segments with fade */}
@@ -1170,7 +1173,7 @@ export function Canvas() {
 											key={i}
 											x1={prev.x} y1={prev.y}
 											x2={pt.x} y2={pt.y}
-											stroke="#ff2222"
+											stroke={lc}
 											strokeWidth={4}
 											strokeLinecap="round"
 											opacity={opacity}
@@ -1179,9 +1182,9 @@ export function Canvas() {
 									);
 								})}
 								{/* Glowing dot at current position */}
-								<circle cx={last.x} cy={last.y} r={8} fill="rgba(255,0,0,0.15)" pointerEvents="none" />
-								<circle cx={last.x} cy={last.y} r={5} fill="rgba(255,0,0,0.3)" pointerEvents="none" />
-								<circle cx={last.x} cy={last.y} r={3} fill="#ff2222" pointerEvents="none" />
+								<circle cx={last.x} cy={last.y} r={8} fill={`${lc}26`} pointerEvents="none" />
+								<circle cx={last.x} cy={last.y} r={5} fill={`${lc}4d`} pointerEvents="none" />
+								<circle cx={last.x} cy={last.y} r={3} fill={lc} pointerEvents="none" />
 							</>
 						);
 					})()}
@@ -1240,7 +1243,7 @@ export function Canvas() {
 				on_position_change={Handle_Position_Change}
 				on_text_change={Handle_Panel_Text_Change}
 				on_opacity_change={() => {}}
-				on_rounded_change={() => {}}
+				on_rounded_change={Handle_Rounded_Change}
 			/>
 		</div>
 	);

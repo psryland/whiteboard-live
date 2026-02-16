@@ -46,7 +46,8 @@ export function ShapeRenderer({
 		<g {...group_props} data-shape-id={shape.id} transform={transform}>
 			{/* Shape outline — always drawn with the shape's own style */}
 			{type === 'rectangle' && (
-				<rect x={x} y={y} width={width} height={height} rx={4} {...outline_props} />
+				<rect x={x} y={y} width={width} height={height}
+					rx={style.rounded ? Math.min(width, height) / 4 : 0} {...outline_props} />
 			)}
 			{type === 'ellipse' && (
 				<ellipse

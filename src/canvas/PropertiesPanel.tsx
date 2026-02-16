@@ -75,7 +75,7 @@ export function PropertiesPanel({
 						on_style_change={on_style_change}
 						on_opacity_change={on_opacity_change}
 						on_rounded_change={on_rounded_change}
-						is_rounded={(shape as any).rounded ?? false}
+						is_rounded={shape.style.rounded ?? false}
 					/>
 				)}
 				{active_tab === 'text' && (

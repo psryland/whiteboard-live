@@ -18,6 +18,9 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 	const active_stroke = is_selected ? '#2196F3' : stroke;
 	const active_width = is_selected ? stroke_width + 1 : stroke_width;
 
+	// Default to 'forward' for legacy connectors
+	const arrow_type = connector.arrow_type ?? 'forward';
+
 	// Use orthogonal routing when both ends are bound to shape ports
 	const use_ortho = connector.source.shape_id && connector.target.shape_id
 		&& connector.source.port_id && connector.target.port_id;
@@ -30,7 +33,16 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 
 		if (src_port && tgt_port) {
 			const path = Orthogonal_Path(source, target, src_port.side, tgt_port.side);
-			const arrow = Arrow_Head(path[path.length - 2] || source, target);
+
+			// Target arrow (forward or both)
+			const target_arrow = (arrow_type === 'forward' || arrow_type === 'both')
+				? Arrow_Head(path[path.length - 2] || source, target)
+				: null;
+
+			// Source arrow (back or both)
+			const source_arrow = (arrow_type === 'back' || arrow_type === 'both')
+				? Arrow_Head(path[1] || target, source)
+				: null;
 
 			return (
 				<g onPointerDown={(e) => on_pointer_down(e, connector)} data-connector-id={connector.id}>
@@ -38,14 +50,20 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 						fill="none" stroke="transparent" strokeWidth={12} style={{ cursor: 'pointer' }} />
 					<polyline points={path.map(p => `${p.x},${p.y}`).join(' ')}
 						fill="none" stroke={active_stroke} strokeWidth={active_width} pointerEvents="none" />
-					<polygon points={Arrow_Points(arrow)} fill={active_stroke} pointerEvents="none" />
+					{target_arrow && <polygon points={Arrow_Points(target_arrow)} fill={active_stroke} pointerEvents="none" />}
+					{source_arrow && <polygon points={Arrow_Points(source_arrow)} fill={active_stroke} pointerEvents="none" />}
 				</g>
 			);
 		}
 	}
 
 	// Straight line fallback
-	const arrow = Arrow_Head(source, target);
+	const target_arrow = (arrow_type === 'forward' || arrow_type === 'both')
+		? Arrow_Head(source, target)
+		: null;
+	const source_arrow = (arrow_type === 'back' || arrow_type === 'both')
+		? Arrow_Head(target, source)
+		: null;
 
 	return (
 		<g onPointerDown={(e) => on_pointer_down(e, connector)} data-connector-id={connector.id}>
@@ -53,7 +71,8 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 				stroke="transparent" strokeWidth={12} style={{ cursor: 'pointer' }} />
 			<line x1={source.x} y1={source.y} x2={target.x} y2={target.y}
 				stroke={active_stroke} strokeWidth={active_width} pointerEvents="none" />
-			<polygon points={Arrow_Points(arrow)} fill={active_stroke} pointerEvents="none" />
+			{target_arrow && <polygon points={Arrow_Points(target_arrow)} fill={active_stroke} pointerEvents="none" />}
+			{source_arrow && <polygon points={Arrow_Points(source_arrow)} fill={active_stroke} pointerEvents="none" />}
 		</g>
 	);
 }

@@ -35,6 +35,7 @@ export interface ShapeStyle {
 	stroke_width: number;
 	font_size: number;
 	text_colour: string;
+	rounded: boolean;
 }
 
 export const DEFAULT_STYLE: ShapeStyle = {
@@ -43,6 +44,7 @@ export const DEFAULT_STYLE: ShapeStyle = {
 	stroke_width: 2,
 	font_size: 14,
 	text_colour: '#333333',
+	rounded: false,
 };
 
 export interface Shape {
@@ -67,10 +69,13 @@ export interface ConnectorEnd {
 	y: number;
 }
 
+export type ArrowType = 'forward' | 'back' | 'both';
+
 export interface Connector {
 	id: string;
 	source: ConnectorEnd;
 	target: ConnectorEnd;
+	arrow_type: ArrowType;
 	style: {
 		stroke: string;
 		stroke_width: number;
@@ -105,3 +110,25 @@ export interface LaserPoint {
 	y: number;
 	timestamp: number;
 }
+
+export interface ToolSettings {
+	pen_size: number;
+	pen_color: string;
+	text_size: number;
+	text_color: string;
+	shape_type: ShapeType;
+	connector_thickness: number;
+	arrow_type: ArrowType;
+	laser_color: string;
+}
+
+export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
+	pen_size: 2,
+	pen_color: '#333333',
+	text_size: 14,
+	text_color: '#333333',
+	shape_type: 'rectangle',
+	connector_thickness: 2,
+	arrow_type: 'forward',
+	laser_color: '#ff2222',
+};
