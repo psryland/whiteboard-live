@@ -213,13 +213,14 @@ export function Canvas() {
 				});
 			},
 			on_cursor_move: (user_id, cursor, sender_name, sender_colour) => {
+				const pressing = (cursor as any).pressing ?? false;
+				const pt = { x: cursor.x, y: cursor.y };
 				set_remote_users(prev => {
 					const exists = prev.some(u => u.id === user_id);
 					if (exists) {
-						return prev.map(u => u.id === user_id ? { ...u, cursor, status: 'editing', name: sender_name || u.name, colour: sender_colour || u.colour } : u);
+						return prev.map(u => u.id === user_id ? { ...u, cursor: pt, pressing, status: 'editing', name: sender_name || u.name, colour: sender_colour || u.colour } : u);
 					}
-					// User not yet known (join message may not have arrived) — add them
-					return [...prev, { id: user_id, name: sender_name || 'Unknown', colour: sender_colour || '#888', status: 'editing' as const, permission: 'edit' as const, cursor }];
+					return [...prev, { id: user_id, name: sender_name || 'Unknown', colour: sender_colour || '#888', status: 'editing' as const, permission: 'edit' as const, cursor: pt, pressing }];
 				});
 			},
 			on_state_sync: (state) => {
@@ -603,7 +604,7 @@ export function Canvas() {
 		// Broadcast cursor position even when not dragging
 		const screen_pt = Get_SVG_Point(e);
 		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
-		collab_ref.current?.Send_Cursor(canvas_pt);
+		collab_ref.current?.Send_Cursor(canvas_pt, e.buttons === 1);
 
 		if (ds.type === 'none') return;
 

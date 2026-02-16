@@ -155,6 +155,7 @@ export interface CollabUser {
 	name: string;
 	colour: string;
 	cursor?: Point;
+	pressing?: boolean;
 	status: 'editing' | 'viewing' | 'idle';
 	permission: 'edit' | 'view';
 }

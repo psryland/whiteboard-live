@@ -107,11 +107,11 @@ export class CollabSession {
 	}
 
 	// Send cursor position (throttled to ~20fps)
-	Send_Cursor(cursor: Point): void {
+	Send_Cursor(cursor: Point, pressing: boolean = false): void {
 		const now = Date.now();
 		if (now - this.cursor_throttle < 50) return;
 		this.cursor_throttle = now;
-		this.Send({ type: 'cursor', payload: cursor });
+		this.Send({ type: 'cursor', payload: { ...cursor, pressing } });
 	}
 
 	// Send a canvas operation

@@ -5,8 +5,11 @@ interface RemoteCursorsProps {
 	viewport: { offset_x: number; offset_y: number; zoom: number };
 }
 
-// SVG cursor path (matches the mockup arrow shape)
+// SVG cursor path — default pointer arrow
 const CURSOR_PATH = 'M 0 0 L 0 18 L 5 14 L 10 22 L 13 20 L 8 12 L 14 10 Z';
+
+// SVG grab hand path — shown when remote user has mouse button down
+const GRAB_PATH = 'M 7 0 C 7 0 6 0 6 2 L 6 8 C 5 7 4 7 3.5 7 C 2.5 7 2 8 2 9 L 2 14 C 2 17 4 19 7 19 L 9 19 C 12 19 14 17 14 14 L 14 5 C 14 4 13 3 12 3 C 11.5 3 11 3.3 10.5 4 L 10.5 3 C 10.5 2 9.5 1 8.5 1 C 8.2 1 8 1.2 7.7 1.4 L 7 0 Z';
 
 export function RemoteCursors({ users, viewport }: RemoteCursorsProps) {
 	return (
@@ -16,10 +19,11 @@ export function RemoteCursors({ users, viewport }: RemoteCursorsProps) {
 				// Convert canvas coords to screen coords
 				const sx = user.cursor.x * viewport.zoom + viewport.offset_x;
 				const sy = user.cursor.y * viewport.zoom + viewport.offset_y;
+				const cursor_path = user.pressing ? GRAB_PATH : CURSOR_PATH;
 				return (
 					<g key={user.id} transform={`translate(${sx}, ${sy})`}>
 						<path
-							d={CURSOR_PATH}
+							d={cursor_path}
 							fill={user.colour}
 							stroke="#fff"
 							strokeWidth={1}
