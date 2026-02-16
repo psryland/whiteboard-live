@@ -19,6 +19,9 @@ interface PropertiesPanelProps {
 	remote_users: CollabUser[];
 	on_start_sharing: () => void;
 	on_stop_sharing: () => void;
+	allow_remote_editing: boolean;
+	on_toggle_remote_editing: (allowed: boolean) => void;
+	remote_editing_blocked: boolean;
 }
 
 const COLOUR_PAGES = [
@@ -75,6 +78,9 @@ export function PropertiesPanel({
 	remote_users,
 	on_start_sharing,
 	on_stop_sharing,
+	allow_remote_editing,
+	on_toggle_remote_editing,
+	remote_editing_blocked,
 }: PropertiesPanelProps) {
 	const [active_tab, set_active_tab] = useState<'style' | 'text' | 'arrange'>('style');
 	const [copied, set_copied] = useState(false);
@@ -140,31 +146,59 @@ export function PropertiesPanel({
 				}} onPointerDown={e => e.stopPropagation()}>
 					{/* Room code */}
 					<div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-						<span style={{ fontSize: 11, fontWeight: 600, color: '#1565C0' }}>Room:</span>
-						<span style={{
-							fontSize: 13, fontWeight: 700, color: '#333', letterSpacing: '1.5px',
-							fontFamily: 'monospace',
-						}}>
-							{collab_session.Room_Id}
-						</span>
+						<span style={{ fontSize: 11, fontWeight: 600, color: '#1565C0', whiteSpace: 'nowrap' }}>Room:</span>
+						<input
+							readOnly
+							value={collab_session.Room_Id}
+							style={{
+								flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: '#333',
+								letterSpacing: '1.5px', fontFamily: 'monospace',
+								background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: 4,
+								padding: '3px 6px', boxSizing: 'border-box', outline: 'none',
+							}}
+						/>
 						<button
 							onClick={Handle_Copy_Code}
 							style={{
 								padding: '2px 6px', borderRadius: 3, border: 'none',
 								background: copied_code ? '#4CAF50' : '#e3f2fd', color: copied_code ? '#fff' : '#1565C0',
 								fontSize: 10, cursor: 'pointer', transition: 'background 0.2s',
+								flexShrink: 0,
 							}}
 						>{copied_code ? '✓' : '📋'}</button>
 					</div>
 					{/* Share URL */}
-					<div style={{
-						fontSize: 10, color: '#666', background: '#f5f5f5', borderRadius: 4,
-						padding: '4px 6px', wordBreak: 'break-all', marginBottom: 8,
-						border: '1px solid #e0e0e0', lineHeight: 1.4,
-						boxSizing: 'border-box',
-					}}>
-						{Share_Url(collab_session.Room_Id)}
-					</div>
+					<input
+						readOnly
+						value={Share_Url(collab_session.Room_Id)}
+						style={{
+							width: '100%', fontSize: 10, color: '#666', background: '#f5f5f5',
+							borderRadius: 4, padding: '4px 6px', marginBottom: 8,
+							border: '1px solid #e0e0e0', boxSizing: 'border-box', outline: 'none',
+						}}
+					/>
+					{/* Allow Remote Editing — host only */}
+					{collab_session.Is_Host && (
+						<label style={{
+							display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8,
+							fontSize: 11, color: '#555', cursor: 'pointer',
+						}}>
+							<input
+								type="checkbox"
+								checked={allow_remote_editing}
+								onChange={e => on_toggle_remote_editing(e.target.checked)}
+								style={{ margin: 0, cursor: 'pointer' }}
+							/>
+							Allow remote editing
+						</label>
+					)}
+					{/* Read-only indicator for guests */}
+					{!collab_session.Is_Host && remote_editing_blocked && (
+						<div style={{
+							fontSize: 11, color: '#b71c1c', background: '#ffebee', borderRadius: 4,
+							padding: '4px 8px', marginBottom: 8, textAlign: 'center', fontWeight: 600,
+						}}>🔒 Editing disabled by host</div>
+					)}
 					<button
 						onClick={Handle_Copy_Link}
 						style={{

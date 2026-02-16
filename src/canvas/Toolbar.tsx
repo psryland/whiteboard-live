@@ -16,6 +16,7 @@ interface ToolbarProps {
 	can_undo: boolean;
 	can_redo: boolean;
 	has_selection: boolean;
+	editing_blocked?: boolean;
 }
 
 const QUICK_COLORS = [
@@ -67,6 +68,7 @@ export function Toolbar({
 	can_undo,
 	can_redo,
 	has_selection,
+	editing_blocked,
 }: ToolbarProps) {
 	const [open_dropdown, set_open_dropdown] = useState<DropdownId | null>(null);
 	const toolbar_ref = useRef<HTMLDivElement>(null);
@@ -90,6 +92,13 @@ export function Toolbar({
 	// Determine which tools count as "active" for shape types
 	const is_shape_tool = active_tool === 'rectangle' || active_tool === 'ellipse' || active_tool === 'diamond';
 
+	// Gate editing tools when remote editing is blocked
+	const eb = !!editing_blocked;
+	const Gated_Tool_Change = useCallback((tool: ToolType) => {
+		if (eb && tool !== 'select' && tool !== 'laser') return;
+		on_tool_change(tool);
+	}, [eb, on_tool_change]);
+
 	return (
 		<div ref={toolbar_ref} style={toolbar_style}>
 			{/* Select */}
@@ -105,7 +114,8 @@ export function Toolbar({
 				icon="✎"
 				label="Pen (P)"
 				active={active_tool === 'freehand'}
-				on_click={() => on_tool_change('freehand')}
+				on_click={() => Gated_Tool_Change('freehand')}
+				disabled={eb}
 				dropdown_open={open_dropdown === 'pen'}
 				on_toggle_dropdown={() => Toggle_Dropdown('pen')}
 			>
@@ -138,7 +148,8 @@ export function Toolbar({
 				icon="T"
 				label="Text (T)"
 				active={active_tool === 'text'}
-				on_click={() => on_tool_change('text')}
+				on_click={() => Gated_Tool_Change('text')}
+				disabled={eb}
 				dropdown_open={open_dropdown === 'text'}
 				on_toggle_dropdown={() => Toggle_Dropdown('text')}
 			>
@@ -171,7 +182,8 @@ export function Toolbar({
 				icon={SHAPE_ICONS[tool_settings.shape_type] || '▭'}
 				label="Shape (S)"
 				active={is_shape_tool}
-				on_click={() => on_tool_change(tool_settings.shape_type)}
+				on_click={() => Gated_Tool_Change(tool_settings.shape_type)}
+				disabled={eb}
 				dropdown_open={open_dropdown === 'shape'}
 				on_toggle_dropdown={() => Toggle_Dropdown('shape')}
 			>
@@ -228,7 +240,8 @@ export function Toolbar({
 				icon="→"
 				label="Connector (A)"
 				active={active_tool === 'arrow'}
-				on_click={() => on_tool_change('arrow')}
+				on_click={() => Gated_Tool_Change('arrow')}
+				disabled={eb}
 				dropdown_open={open_dropdown === 'connector'}
 				on_toggle_dropdown={() => Toggle_Dropdown('connector')}
 			>
@@ -336,13 +349,13 @@ export function Toolbar({
 			<div style={separator_style} />
 
 			{/* Undo / Redo */}
-			<ToolBtn icon="↩" label="Undo (Ctrl+Z)" active={false} on_click={on_undo} disabled={!can_undo} />
-			<ToolBtn icon="↪" label="Redo (Ctrl+Y)" active={false} on_click={on_redo} disabled={!can_redo} />
+			<ToolBtn icon="↩" label="Undo (Ctrl+Z)" active={false} on_click={on_undo} disabled={!can_undo || eb} />
+			<ToolBtn icon="↪" label="Redo (Ctrl+Y)" active={false} on_click={on_redo} disabled={!can_redo || eb} />
 
 			<div style={separator_style} />
 
 			{/* Delete */}
-			<ToolBtn icon="🗑" label="Delete (Del)" active={false} on_click={on_delete} disabled={!has_selection} />
+			<ToolBtn icon="🗑" label="Delete (Del)" active={false} on_click={on_delete} disabled={!has_selection || eb} />
 		</div>
 	);
 }
@@ -375,7 +388,7 @@ function ToolBtn({ icon, label, active, on_click, disabled, highlighted }: {
 	);
 }
 
-function ToolBtnWithDropdown({ icon, label, active, on_click, dropdown_open, on_toggle_dropdown, children, highlighted }: {
+function ToolBtnWithDropdown({ icon, label, active, on_click, dropdown_open, on_toggle_dropdown, children, highlighted, disabled }: {
 	icon: string;
 	label: string;
 	active: boolean;
@@ -384,11 +397,13 @@ function ToolBtnWithDropdown({ icon, label, active, on_click, dropdown_open, on_
 	on_toggle_dropdown: () => void;
 	children: React.ReactNode;
 	highlighted?: boolean;
+	disabled?: boolean;
 }) {
 	return (
-		<div style={{ position: 'relative', display: 'flex' }}>
+		<div style={{ position: 'relative', display: 'flex', opacity: disabled ? 0.4 : 1 }}>
 			<button
 				onClick={on_click}
+				disabled={disabled}
 				title={label}
 				style={{
 					...btn_style,

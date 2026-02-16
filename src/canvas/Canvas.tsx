@@ -188,6 +188,12 @@ export function Canvas() {
 	const [join_room_code, set_join_room_code] = useState('');
 	const [join_room_name, set_join_room_name] = useState(localStorage.getItem('whitebored-user-name') || '');
 
+	// Remote editing control — host toggles this, guests receive it
+	const [allow_remote_editing, set_allow_remote_editing] = useState(true);
+	const allow_remote_editing_ref = useRef(true);
+	allow_remote_editing_ref.current = allow_remote_editing;
+	const [remote_editing_blocked, set_remote_editing_blocked] = useState(false);
+
 	// Check URL for room parameter on mount
 	useEffect(() => {
 		const params = new URLSearchParams(window.location.search);
@@ -240,6 +246,10 @@ export function Canvas() {
 				set_connectors(state.connectors || []);
 				set_freehand_paths(state.freehand_paths || []);
 				if (state.board_name) set_current_board_name(state.board_name);
+				// Receive host's remote editing setting
+				if (state.allow_remote_editing !== undefined) {
+					set_remote_editing_blocked(!state.allow_remote_editing);
+				}
 				const max_z = Math.max(0,
 					...(state.shapes || []).map(s => s.z_index ?? 0),
 					...(state.connectors || []).map(c => c.z_index ?? 0),
@@ -250,6 +260,22 @@ export function Canvas() {
 			},
 			on_operation: (msg) => {
 				const { type, payload } = msg;
+
+				// Settings updates are always accepted (host → guests)
+				if (type === 'op_update' && payload.kind === 'settings') {
+					if (payload.item?.allow_remote_editing !== undefined) {
+						set_remote_editing_blocked(!payload.item.allow_remote_editing);
+					}
+					return;
+				}
+
+				// Host ignores remote edits when allow_remote_editing is off
+				if (is_host && !allow_remote_editing_ref.current && (type === 'op_add' || type === 'op_update' || type === 'op_delete')) {
+					// Still allow board_name updates through
+					if (type === 'op_update' && payload.kind === 'board_name') { /* fall through */ }
+					else return;
+				}
+
 				if (type === 'op_add') {
 					if (payload.kind === 'shape') set_shapes(prev => [...prev, payload.item]);
 					else if (payload.kind === 'connector') set_connectors(prev => [...prev, payload.item]);
@@ -266,7 +292,7 @@ export function Canvas() {
 					set_freehand_paths(prev => prev.filter(f => !ids.has(f.id)));
 				}
 			},
-			on_state_requested: () => ({ shapes: shapes_ref.current, connectors: connectors_ref.current, freehand_paths: freehand_ref.current, board_name: board_name_ref.current }),
+			on_state_requested: () => ({ shapes: shapes_ref.current, connectors: connectors_ref.current, freehand_paths: freehand_ref.current, board_name: board_name_ref.current, allow_remote_editing: allow_remote_editing_ref.current }),
 			on_connection_change: (connected) => set_collab_connected(connected),
 		}, is_host);
 
@@ -301,6 +327,11 @@ export function Canvas() {
 		window.history.replaceState({}, '', url.toString());
 	}
 
+	function Handle_Toggle_Remote_Editing(allowed: boolean): void {
+		set_allow_remote_editing(allowed);
+		Broadcast_Update('settings', { allow_remote_editing: allowed });
+	}
+
 	function Handle_Join_Room(): void {
 		const code = join_room_code.trim();
 		if (!code) return;
@@ -316,13 +347,16 @@ export function Canvas() {
 	}
 
 	// Broadcast operation to collaborators
+	// Guests are blocked from sending edits when remote editing is disabled
 	function Broadcast_Add(kind: 'shape' | 'connector' | 'freehand', item: any): void {
+		if (remote_editing_blocked) return;
 		collab_ref.current?.Send_Operation('op_add', { kind, item });
 	}
-	function Broadcast_Update(kind: 'shape' | 'connector' | 'freehand' | 'board_name', item: any): void {
+	function Broadcast_Update(kind: 'shape' | 'connector' | 'freehand' | 'board_name' | 'settings', item: any): void {
 		collab_ref.current?.Send_Operation('op_update', { kind, item });
 	}
 	function Broadcast_Delete(ids: string[]): void {
+		if (remote_editing_blocked) return;
 		collab_ref.current?.Send_Operation('op_delete', { ids });
 	}
 
@@ -529,6 +563,9 @@ export function Canvas() {
 			e.preventDefault();
 			return;
 		}
+
+		// Block editing tools when remote editing is disabled (allow select for viewing)
+		if (remote_editing_blocked && active_tool !== 'select' && active_tool !== 'laser') return;
 
 		// Left click on background
 		if (e.button === 0) {
@@ -1040,6 +1077,21 @@ export function Canvas() {
 		const screen_pt = Get_SVG_Point(e);
 		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
 
+		// When editing is blocked, only allow selection (no move/resize/rotate/connect)
+		if (remote_editing_blocked) {
+			if (e.shiftKey) {
+				set_selected_ids(prev => {
+					const next = new Set(prev);
+					if (next.has(shape.id)) next.delete(shape.id);
+					else next.add(shape.id);
+					return next;
+				});
+			} else {
+				set_selected_ids(new Set([shape.id]));
+			}
+			return;
+		}
+
 		// Check if clicking on a resize handle
 		const target = e.target as Element;
 		const handle_index = target.getAttribute('data-handle-index');
@@ -1167,6 +1219,7 @@ export function Canvas() {
 	// ── Canvas double-click → create shape ──
 	const Handle_Canvas_DoubleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
 		if ((e.target as Element) !== svg_ref.current) return;
+		if (remote_editing_blocked) return;
 		const canvas_pt = Screen_To_Canvas(Get_SVG_Point(e), viewport);
 		Push_Undo();
 		const new_shape: Shape = {
@@ -1221,19 +1274,19 @@ export function Canvas() {
 			}
 
 			if (e.ctrlKey || e.metaKey) {
-				if (e.key === 'z') { e.preventDefault(); Do_Undo(); }
-				if (e.key === 'y') { e.preventDefault(); Do_Redo(); }
+				if (e.key === 'z') { e.preventDefault(); if (!remote_editing_blocked) Do_Undo(); }
+				if (e.key === 'y') { e.preventDefault(); if (!remote_editing_blocked) Do_Redo(); }
 				if (e.key === 'a') { e.preventDefault(); set_selected_ids(new Set([...shapes.map(s => s.id), ...connectors.map(c => c.id), ...freehand_paths.map(f => f.id)])); }
 				if (e.key === 'c') { e.preventDefault(); Copy_Selected(); }
-				if (e.key === 'v') { e.preventDefault(); Paste(); }
-				if (e.key === 'd') { e.preventDefault(); Duplicate_Selected(); }
+				if (e.key === 'v') { e.preventDefault(); if (!remote_editing_blocked) Paste(); }
+				if (e.key === 'd') { e.preventDefault(); if (!remote_editing_blocked) Duplicate_Selected(); }
 				return;
 			}
 
 			switch (e.key) {
 				case 'Delete':
 				case 'Backspace':
-					Delete_Selected();
+					if (!remote_editing_blocked) Delete_Selected();
 					break;
 				case 'Escape':
 					set_selected_ids(new Set());
@@ -1241,7 +1294,7 @@ export function Canvas() {
 					break;
 				case 'F2':
 					// Edit text of selected shape
-					if (selected_ids.size === 1) {
+					if (!remote_editing_blocked && selected_ids.size === 1) {
 						const id = Array.from(selected_ids)[0];
 						editing_started_at.current = Date.now();
 						set_editing_shape_id(id);
@@ -1249,10 +1302,10 @@ export function Canvas() {
 					e.preventDefault();
 					break;
 				case 'v': case 'V': set_active_tool('select'); break;
-				case 's': case 'S': set_active_tool(tool_settings.shape_type); break;
-				case 't': case 'T': set_active_tool('text'); break;
-				case 'a': case 'A': set_active_tool('arrow'); break;
-				case 'p': case 'P': set_active_tool('freehand'); break;
+				case 's': case 'S': if (!remote_editing_blocked) set_active_tool(tool_settings.shape_type); break;
+				case 't': case 'T': if (!remote_editing_blocked) set_active_tool('text'); break;
+				case 'a': case 'A': if (!remote_editing_blocked) set_active_tool('arrow'); break;
+				case 'p': case 'P': if (!remote_editing_blocked) set_active_tool('freehand'); break;
 				case 'l': case 'L': set_active_tool('laser'); break;
 				case 'g': case 'G': set_snap_enabled(prev => !prev); break;
 			}
@@ -1260,7 +1313,14 @@ export function Canvas() {
 
 		window.addEventListener('keydown', On_KeyDown);
 		return () => window.removeEventListener('keydown', On_KeyDown);
-	}, [editing_shape_id, shapes, Do_Undo, Do_Redo, Delete_Selected, Copy_Selected, Paste, Duplicate_Selected, tool_settings.shape_type]);
+	}, [editing_shape_id, shapes, Do_Undo, Do_Redo, Delete_Selected, Copy_Selected, Paste, Duplicate_Selected, tool_settings.shape_type, remote_editing_blocked]);
+
+	// Force tool back to select/laser when remote editing is blocked
+	useEffect(() => {
+		if (remote_editing_blocked && active_tool !== 'select' && active_tool !== 'laser') {
+			set_active_tool('select');
+		}
+	}, [remote_editing_blocked]);
 
 	// Connector click handler
 	const Handle_Connector_PointerDown = useCallback((e: React.PointerEvent, connector: Connector) => {
@@ -1561,6 +1621,7 @@ export function Canvas() {
 				can_undo={undo_mgr.Can_Undo}
 				can_redo={undo_mgr.Can_Redo}
 				has_selection={selected_ids.size > 0}
+				editing_blocked={remote_editing_blocked}
 			/>
 
 			<BoardPanel
@@ -1921,6 +1982,9 @@ export function Canvas() {
 				remote_users={remote_users}
 				on_start_sharing={Handle_Start_Sharing}
 				on_stop_sharing={Stop_Collab_Session}
+				allow_remote_editing={allow_remote_editing}
+				on_toggle_remote_editing={Handle_Toggle_Remote_Editing}
+				remote_editing_blocked={remote_editing_blocked}
 			/>
 		</div>
 	);

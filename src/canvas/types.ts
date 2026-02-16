@@ -95,6 +95,7 @@ export interface CanvasState {
 	connectors: Connector[];
 	freehand_paths: FreehandPath[];
 	board_name?: string;
+	allow_remote_editing?: boolean;
 }
 
 export type ToolType = 'select' | 'rectangle' | 'ellipse' | 'diamond' | 'text' | 'arrow' | 'freehand' | 'laser';
