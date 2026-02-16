@@ -26,18 +26,47 @@ export function Default_Ports(): Port[] {
 	];
 }
 
+// Rotate a point around a centre by the given angle in degrees
+function Rotate_Point(p: Point, cx: number, cy: number, angle_deg: number): Point {
+	if (!angle_deg) return p;
+	const rad = angle_deg * Math.PI / 180;
+	const cos = Math.cos(rad);
+	const sin = Math.sin(rad);
+	const dx = p.x - cx;
+	const dy = p.y - cy;
+	return {
+		x: cx + dx * cos - dy * sin,
+		y: cy + dx * sin + dy * cos,
+	};
+}
+
 // Get the absolute position of a port on a shape
-export function Port_Position(shape: Shape, port: Port): Point {
+// When include_rotation is false, returns the position in the shape's local coordinate space
+// (useful for rendering inside an already-rotated SVG group)
+export function Port_Position(shape: Shape, port: Port, include_rotation: boolean = true): Point {
+	let p: Point;
 	switch (port.side) {
 		case 'top':
-			return { x: shape.x + shape.width * port.offset, y: shape.y };
+			p = { x: shape.x + shape.width * port.offset, y: shape.y };
+			break;
 		case 'bottom':
-			return { x: shape.x + shape.width * port.offset, y: shape.y + shape.height };
+			p = { x: shape.x + shape.width * port.offset, y: shape.y + shape.height };
+			break;
 		case 'left':
-			return { x: shape.x, y: shape.y + shape.height * port.offset };
+			p = { x: shape.x, y: shape.y + shape.height * port.offset };
+			break;
 		case 'right':
-			return { x: shape.x + shape.width, y: shape.y + shape.height * port.offset };
+			p = { x: shape.x + shape.width, y: shape.y + shape.height * port.offset };
+			break;
 	}
+
+	// Apply shape rotation around its centre
+	if (include_rotation && shape.rotation) {
+		const cx = shape.x + shape.width / 2;
+		const cy = shape.y + shape.height / 2;
+		p = Rotate_Point(p, cx, cy, shape.rotation);
+	}
+	return p;
 }
 
 // Find the nearest port on a shape to a given point
@@ -102,4 +131,12 @@ export function Diamond_Points(x: number, y: number, w: number, h: number): stri
 	const cx = x + w / 2;
 	const cy = y + h / 2;
 	return `${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}`;
+}
+
+// Snap a value to the nearest grid increment
+export const GRID_SIZE = 10;
+export const GRID_MAJOR = 100;
+
+export function Snap_To_Grid(value: number, grid_size: number = GRID_SIZE): number {
+	return Math.round(value / grid_size) * grid_size;
 }

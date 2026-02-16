@@ -8,6 +8,8 @@ interface ToolbarProps {
 	on_delete: () => void;
 	on_toggle_colour_picker: () => void;
 	on_duplicate: () => void;
+	snap_enabled: boolean;
+	on_toggle_snap: () => void;
 	can_undo: boolean;
 	can_redo: boolean;
 	has_selection: boolean;
@@ -39,6 +41,8 @@ export function Toolbar({
 	on_delete,
 	on_toggle_colour_picker,
 	on_duplicate,
+	snap_enabled,
+	on_toggle_snap,
 	can_undo,
 	can_redo,
 	has_selection,
@@ -64,6 +68,19 @@ export function Toolbar({
 
 			<button onClick={on_toggle_colour_picker} disabled={!has_selection} title="Colour (C)" style={btn_style}>🎨</button>
 			<button onClick={on_duplicate} disabled={!has_selection} title="Duplicate (Ctrl+D)" style={btn_style}>⧉</button>
+
+			<div style={separator_style} />
+
+			<button
+				onClick={on_toggle_snap}
+				title={`Snap to Grid (G) — ${snap_enabled ? 'ON' : 'OFF'}\nHold Alt to temporarily disable`}
+				style={{
+					...btn_style,
+					background: snap_enabled ? '#e3f2fd' : '#fff',
+					color: snap_enabled ? '#1976D2' : '#999',
+					border: snap_enabled ? '1px solid #90caf9' : '1px solid #ddd',
+				}}
+			>⊞</button>
 
 			<div style={separator_style} />
 

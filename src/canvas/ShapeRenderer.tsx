@@ -172,12 +172,12 @@ function SelectionHandles({ x, y, width, height }: { x: number; y: number; width
 	);
 }
 
-// Blue dots at port positions
+// Port indicators rendered inside the shape's rotated group — use un-rotated positions
 function PortIndicators({ shape }: { shape: Shape }) {
 	return (
 		<>
 			{shape.ports.map((port) => {
-				const pos = Port_Position(shape, port);
+				const pos = Port_Position(shape, port, false);
 				return (
 					<circle
 						key={port.id}

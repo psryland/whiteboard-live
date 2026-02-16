@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle, FreehandPath, LaserPoint } from './types';
 import { DEFAULT_STYLE } from './types';
-import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds } from './helpers';
+import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, GRID_SIZE, GRID_MAJOR } from './helpers';
 import { UndoManager } from './undo';
 import { ShapeRenderer } from './ShapeRenderer';
 import { ConnectorRenderer } from './ConnectorRenderer';
@@ -47,6 +47,9 @@ export function Canvas() {
 	const [active_tool, set_active_tool] = useState<ToolType>('select');
 	const [selected_ids, set_selected_ids] = useState<Set<string>>(new Set());
 	const [hovered_shape_id, set_hovered_shape_id] = useState<string | null>(null);
+
+	// Grid snapping
+	const [snap_enabled, set_snap_enabled] = useState(true);
 
 	// Drag state
 	const drag_state = useRef<{
@@ -383,13 +386,29 @@ export function Canvas() {
 		} else if (ds.type === 'move' && ds.shape_origins) {
 			const dx = canvas_pt.x - ds.start_canvas.x;
 			const dy = canvas_pt.y - ds.start_canvas.y;
+			const should_snap = snap_enabled && !e.altKey;
 			set_shapes(prev => prev.map(s => {
 				const origin = ds.shape_origins!.get(s.id);
 				if (!origin) return s;
-				return { ...s, x: origin.x + dx, y: origin.y + dy };
+				let nx = origin.x + dx;
+				let ny = origin.y + dy;
+				if (should_snap) {
+					nx = Snap_To_Grid(nx);
+					ny = Snap_To_Grid(ny);
+				}
+				return { ...s, x: nx, y: ny };
 			}));
 		} else if (ds.type === 'create' && ds.creating_shape) {
-			const bounds = Normalise_Bounds(ds.start_canvas, canvas_pt);
+			const should_snap = snap_enabled && !e.altKey;
+			let bounds = Normalise_Bounds(ds.start_canvas, canvas_pt);
+			if (should_snap) {
+				bounds = {
+					x: Snap_To_Grid(bounds.x),
+					y: Snap_To_Grid(bounds.y),
+					width: Snap_To_Grid(bounds.width),
+					height: Snap_To_Grid(bounds.height),
+				};
+			}
 			ds.creating_shape = {
 				...ds.creating_shape,
 				x: bounds.x,
@@ -433,6 +452,13 @@ export function Canvas() {
 			else if (handle === 5) { width += dx; }
 			else if (handle === 6) { height += dy; }
 			else if (handle === 7) { x += dx; width -= dx; }
+
+			if (snap_enabled && !e.altKey) {
+				x = Snap_To_Grid(x);
+				y = Snap_To_Grid(y);
+				width = Snap_To_Grid(width);
+				height = Snap_To_Grid(height);
+			}
 
 			// Enforce minimum size
 			if (width < 10) { width = 10; }
@@ -767,6 +793,7 @@ export function Canvas() {
 				case 'a': case 'A': set_active_tool('arrow'); break;
 				case 'p': case 'P': set_active_tool('freehand'); break;
 				case 'l': case 'L': set_active_tool('laser'); break;
+				case 'g': case 'G': set_snap_enabled(prev => !prev); break;
 				case 'c': case 'C':
 					if (selected_ids.size > 0) set_show_colour_picker(prev => !prev);
 					break;
@@ -837,6 +864,8 @@ export function Canvas() {
 				on_delete={Delete_Selected}
 				on_toggle_colour_picker={() => set_show_colour_picker(prev => !prev)}
 				on_duplicate={Duplicate_Selected}
+				snap_enabled={snap_enabled}
+				on_toggle_snap={() => set_snap_enabled(prev => !prev)}
 				can_undo={undo_mgr.Can_Undo}
 				can_redo={undo_mgr.Can_Redo}
 				has_selection={selected_ids.size > 0}
@@ -866,16 +895,35 @@ export function Canvas() {
 				onWheel={Handle_Wheel}
 				onContextMenu={Handle_ContextMenu}
 			>
-				{/* Grid pattern */}
+				{/* Grid patterns — minor lines and major lines */}
 				<defs>
-					<pattern id="grid" width={20 * viewport.zoom} height={20 * viewport.zoom} patternUnits="userSpaceOnUse"
-						x={viewport.offset_x % (20 * viewport.zoom)}
-						y={viewport.offset_y % (20 * viewport.zoom)}
+					<pattern id="grid-minor"
+						width={GRID_SIZE * viewport.zoom}
+						height={GRID_SIZE * viewport.zoom}
+						patternUnits="userSpaceOnUse"
+						x={viewport.offset_x % (GRID_SIZE * viewport.zoom)}
+						y={viewport.offset_y % (GRID_SIZE * viewport.zoom)}
 					>
-						<circle cx={1} cy={1} r={0.5} fill="#ddd" />
+						<path
+							d={`M ${GRID_SIZE * viewport.zoom} 0 L 0 0 0 ${GRID_SIZE * viewport.zoom}`}
+							fill="none" stroke="#e8e8e8" strokeWidth={0.5}
+						/>
+					</pattern>
+					<pattern id="grid-major"
+						width={GRID_MAJOR * viewport.zoom}
+						height={GRID_MAJOR * viewport.zoom}
+						patternUnits="userSpaceOnUse"
+						x={viewport.offset_x % (GRID_MAJOR * viewport.zoom)}
+						y={viewport.offset_y % (GRID_MAJOR * viewport.zoom)}
+					>
+						<rect width="100%" height="100%" fill="url(#grid-minor)" />
+						<path
+							d={`M ${GRID_MAJOR * viewport.zoom} 0 L 0 0 0 ${GRID_MAJOR * viewport.zoom}`}
+							fill="none" stroke="#d0d0d0" strokeWidth={1}
+						/>
 					</pattern>
 				</defs>
-				<rect width="100%" height="100%" fill="url(#grid)" pointerEvents="none" />
+				<rect width="100%" height="100%" fill="url(#grid-major)" pointerEvents="none" />
 
 				{/* Transformed canvas content */}
 				<g transform={`translate(${viewport.offset_x}, ${viewport.offset_y}) scale(${viewport.zoom})`}>
