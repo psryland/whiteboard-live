@@ -10,7 +10,7 @@ export const msal_config: Configuration = {
 	auth: {
 		clientId: CLIENT_ID,
 		authority: 'https://login.microsoftonline.com/common',
-		redirectUri: REDIRECT_URI + '/auth-redirect.html',
+		redirectUri: REDIRECT_URI,
 		postLogoutRedirectUri: REDIRECT_URI,
 	},
 	cache: {

@@ -8,8 +8,15 @@ import { Canvas } from './canvas/Canvas';
 
 const msal_instance = new PublicClientApplication(msal_config);
 
-// Initialize MSAL before any auth calls
-const msal_init = msal_instance.initialize();
+// Initialize MSAL and handle popup auth response.
+// When this page loads in a popup after auth redirect, handleRedirectPromise
+// processes the auth code and MSAL closes the popup automatically.
+const msal_init = msal_instance.initialize().then(() =>
+	msal_instance.handleRedirectPromise().catch(() => null)
+);
+
+// If we're in a popup with an auth response, don't render the full app
+const is_popup_auth = window.opener && (window.location.hash.includes('code=') || window.location.hash.includes('error='));
 
 // Error boundary to catch and display React rendering errors
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -41,7 +48,9 @@ export function App() {
 		msal_init.then(() => set_msal_ready(true));
 	}, []);
 
+	// Skip Teams SDK init and full rendering if we're in an auth popup
 	useEffect(() => {
+		if (is_popup_auth) return;
 		async function Init_Teams() {
 			try {
 				const timeout = new Promise<never>((_, reject) =>
@@ -78,6 +87,9 @@ export function App() {
 	}, []);
 
 	if (!msal_ready) return null;
+
+	// Auth popup — just show a loading message while MSAL processes the response
+	if (is_popup_auth) return <div style={{ padding: 20, textAlign: 'center' }}>Signing in...</div>;
 
 	if (is_config_frame) {
 		return (

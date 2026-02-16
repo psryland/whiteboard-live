@@ -2,6 +2,11 @@
 <html>
 <head><title>Signing in...</title></head>
 <body>
-<script>/* MSAL popup redirect — this page is intentionally blank */</script>
+<script type="module">
+// This page is loaded in the MSAL popup after auth redirect.
+// Import MSAL, create the same instance, and call handleRedirectPromise
+// which processes the auth code and closes the popup.
+import { PublicClientApplication } from '/assets/msal-redirect.js';
+</script>
 </body>
 </html>
