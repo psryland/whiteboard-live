@@ -11,6 +11,7 @@ import { BoardPanel } from './BoardPanel';
 import { PropertiesPanel } from './PropertiesPanel';
 import { CollabSession, Generate_Room_Id } from './Collaboration';
 import { RemoteCursors } from './RemoteCursors';
+import { useGraphToken } from '../auth/useGraphToken';
 
 const STORAGE_KEY = 'whiteboard-live';
 
@@ -70,6 +71,7 @@ function Save_State(state: CanvasState): void {
 export function Canvas() {
 	const svg_ref = useRef<SVGSVGElement>(null);
 	const undo_mgr = useRef(new UndoManager()).current;
+	const graph_auth = useGraphToken();
 
 	// Canvas data
 	const initial_state = useRef(Load_State()).current;
@@ -1539,6 +1541,7 @@ export function Canvas() {
 				on_board_id_change={set_current_board_id}
 				current_board_name={current_board_name}
 				on_board_name_change={(name: string) => { set_current_board_name(name); Broadcast_Update('board_name', name); }}
+				graph_auth={graph_auth}
 			/>
 
 			<svg

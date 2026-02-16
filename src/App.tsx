@@ -1,7 +1,12 @@
 import { Component, useEffect, useState, type ReactNode } from 'react';
 import { app, pages } from '@microsoft/teams-js';
 import { FluentProvider, webLightTheme } from '@fluentui/react-components';
+import { PublicClientApplication } from '@azure/msal-browser';
+import { MsalProvider } from '@azure/msal-react';
+import { msal_config } from './auth/MsalConfig';
 import { Canvas } from './canvas/Canvas';
+
+const msal_instance = new PublicClientApplication(msal_config);
 
 // Error boundary to catch and display React rendering errors
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -73,8 +78,10 @@ export function App() {
 	}
 
 	return (
-		<ErrorBoundary>
-			<Canvas />
-		</ErrorBoundary>
+		<MsalProvider instance={msal_instance}>
+			<ErrorBoundary>
+				<Canvas />
+			</ErrorBoundary>
+		</MsalProvider>
 	);
 }

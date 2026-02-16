@@ -40,6 +40,10 @@
 		}
 	],
 	"permissions": ["identity"],
+	"webApplicationInfo": {
+		"id": "{{ENTRA_CLIENT_ID}}",
+		"resource": "api://yellow-plant-01a814f00.6.azurestaticapps.net/{{ENTRA_CLIENT_ID}}"
+	},
 	"validDomains": [
 		"yellow-plant-01a814f00.6.azurestaticapps.net"
 	]

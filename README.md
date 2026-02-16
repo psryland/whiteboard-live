@@ -118,6 +118,46 @@ Click **🔗 Share** in the toolbar to start a live session. Share the generated
 - Late joiners receive full canvas state from the host
 - Sessions use room-scoped WebSocket groups for isolation
 
+## Cloud Storage (OneDrive / SharePoint)
+
+Boards can be saved to OneDrive or SharePoint via Microsoft Graph API. This requires an Entra ID (Azure AD) app registration.
+
+### Setting up Entra ID App Registration
+
+1. Go to the [Azure Portal](https://portal.azure.com/) → **Microsoft Entra ID** → **App registrations** → **New registration**
+2. **Name**: `Whiteboard Live`
+3. **Supported account types**: "Accounts in any organizational directory (Any Microsoft Entra ID tenant - Multitenant)" — or single-tenant if you only need your org
+4. **Redirect URI**: Select **Single-page application (SPA)** and enter your SWA URL (e.g. `https://yellow-plant-01a814f00.6.azurestaticapps.net`)
+5. Click **Register**
+
+### Configure API Permissions
+
+1. Go to **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated permissions**
+2. Add these permissions:
+   - `User.Read` — read user profile
+   - `Files.ReadWrite` — read/write files in OneDrive
+   - `Sites.ReadWrite.All` — read/write SharePoint sites (for team boards)
+3. Click **Grant admin consent for [your org]** if you are a tenant admin (otherwise users will be prompted individually)
+
+### Configure the Client ID
+
+1. Copy the **Application (client) ID** from the app registration overview page
+2. Create a `.env` file in the project root (see `.env.example`):
+   ```
+   VITE_ENTRA_CLIENT_ID=your-client-id-here
+   ```
+3. For production, set this in your Azure Static Web App configuration or CI/CD pipeline
+
+### Update the Teams Manifest
+
+In `appPackage/manifest.json`, replace `{{ENTRA_CLIENT_ID}}` in the `webApplicationInfo` section with your actual client ID.
+
+### How Cloud Storage Works
+
+- **OneDrive**: Boards are saved as `.wbl.json` files in `/Apps/Whiteboard Live/` in the user's OneDrive (the app-specific folder)
+- **SharePoint**: Use "Save to SharePoint" to save boards to a team SharePoint site's document library under `/Whiteboard Live/`
+- Sign in via the **Boards** panel (☰) → **Cloud Storage** section → **Sign in with Microsoft**
+
 ## Sideload into Teams
 
 ### 1. Enable sideloading in your tenant
