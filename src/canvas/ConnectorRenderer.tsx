@@ -33,10 +33,10 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 
 		// Arrow heads computed from tangent at endpoints
 		const target_arrow = (arrow_type === 'forward' || arrow_type === 'both')
-			? Arrow_Head(cp[1], target)
+			? Arrow_Head(cp[1], target, stroke_width)
 			: null;
 		const source_arrow = (arrow_type === 'back' || arrow_type === 'both')
-			? Arrow_Head(cp[0], source)
+			? Arrow_Head(cp[0], source, stroke_width)
 			: null;
 
 		return (
@@ -85,10 +85,10 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 			const path = Orthogonal_Path(source, target, src_port.side, tgt_port.side);
 
 			const target_arrow = (arrow_type === 'forward' || arrow_type === 'both')
-				? Arrow_Head(path[path.length - 2] || source, target)
+				? Arrow_Head(path[path.length - 2] || source, target, stroke_width)
 				: null;
 			const source_arrow = (arrow_type === 'back' || arrow_type === 'both')
-				? Arrow_Head(path[1] || target, source)
+				? Arrow_Head(path[1] || target, source, stroke_width)
 				: null;
 
 			return (
@@ -112,10 +112,10 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 
 	// Straight line fallback
 	const target_arrow = (arrow_type === 'forward' || arrow_type === 'both')
-		? Arrow_Head(source, target)
+		? Arrow_Head(source, target, stroke_width)
 		: null;
 	const source_arrow = (arrow_type === 'back' || arrow_type === 'both')
-		? Arrow_Head(target, source)
+		? Arrow_Head(target, source, stroke_width)
 		: null;
 
 	return (
@@ -196,8 +196,8 @@ function Extend_Point(p: Point, side: string, dist: number): Point {
 	}
 }
 
-function Arrow_Head(from: Point, to: Point) {
-	const head_len = 10;
+function Arrow_Head(from: Point, to: Point, stroke_width: number = 2) {
+	const head_len = 6 + stroke_width * 3;
 	const angle = Math.atan2(to.y - from.y, to.x - from.x);
 	return {
 		tip: to,
