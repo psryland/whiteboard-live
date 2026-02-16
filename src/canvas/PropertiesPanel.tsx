@@ -12,9 +12,42 @@ interface PropertiesPanelProps {
 	on_connector_change: (changes: Partial<Pick<Connector, 'arrow_type' | 'routing'> & { stroke: string; stroke_width: number }>) => void;
 }
 
-const QUICK_COLOURS = [
-	'#ffffff', '#f5f5f5', '#dbeafe', '#dcfce7', '#fef9c3', '#fee2e2', '#f3e8ff', '#fce7f3',
-	'#e0e7ff', '#cffafe', '#d1fae5', '#fef3c7', '#ffe4e6', '#ede9fe', '#fce4ec', '#e8eaf6',
+const COLOUR_PAGES = [
+	{
+		name: 'Pastel',
+		colours: [
+			'#ffffff', '#f5f5f5', '#dbeafe', '#dcfce7',
+			'#fef9c3', '#fed7aa', '#fecaca', '#e9d5ff',
+		],
+	},
+	{
+		name: 'Vivid',
+		colours: [
+			'#ef4444', '#f97316', '#eab308', '#22c55e',
+			'#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899',
+		],
+	},
+	{
+		name: 'Bold',
+		colours: [
+			'#000000', '#1e3a5f', '#1e40af', '#15803d',
+			'#a16207', '#b91c1c', '#7e22ce', '#be185d',
+		],
+	},
+	{
+		name: 'Earth',
+		colours: [
+			'#fefce8', '#fef3c7', '#d6d3d1', '#a8a29e',
+			'#78716c', '#57534e', '#44403c', '#292524',
+		],
+	},
+	{
+		name: 'Cool',
+		colours: [
+			'#f0f9ff', '#bae6fd', '#7dd3fc', '#38bdf8',
+			'#0ea5e9', '#0284c7', '#0369a1', '#075985',
+		],
+	},
 ];
 
 export function PropertiesPanel({
@@ -121,22 +154,49 @@ function StyleTab({ style, on_style_change, on_rounded_change, is_rounded }: {
 	on_rounded_change: (rounded: boolean) => void;
 	is_rounded: boolean;
 }) {
+	const [colour_page, set_colour_page] = useState(0);
+	const page = COLOUR_PAGES[colour_page];
+
 	return (
 		<>
-			{/* Quick colour palette */}
+			{/* Paginated colour palette */}
 			<div style={{ marginBottom: 12 }}>
-				<div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 3 }}>
-					{QUICK_COLOURS.map(c => (
-						<button
-							key={c}
-							onClick={() => on_style_change({ fill: c })}
+				<div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+					<button
+						onClick={() => set_colour_page(p => (p - 1 + COLOUR_PAGES.length) % COLOUR_PAGES.length)}
+						style={nav_btn_style}
+					>‹</button>
+					<div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 3 }}>
+						{page.colours.map(c => (
+							<button
+								key={c}
+								onClick={() => on_style_change({ fill: c })}
+								style={{
+									width: '100%', aspectRatio: '1', boxSizing: 'border-box',
+									background: c,
+									border: style.fill === c ? '2px solid #2196F3' : '1px solid #ccc',
+									borderRadius: 4,
+									cursor: 'pointer',
+									padding: 0,
+								}}
+							/>
+						))}
+					</div>
+					<button
+						onClick={() => set_colour_page(p => (p + 1) % COLOUR_PAGES.length)}
+						style={nav_btn_style}
+					>›</button>
+				</div>
+				{/* Page dots */}
+				<div style={{ display: 'flex', justifyContent: 'center', gap: 4 }}>
+					{COLOUR_PAGES.map((_, i) => (
+						<div
+							key={i}
+							onClick={() => set_colour_page(i)}
 							style={{
-								width: 26, height: 26,
-								background: c,
-								border: style.fill === c ? '2px solid #2196F3' : '1px solid #ccc',
-								borderRadius: 4,
+								width: 7, height: 7, borderRadius: '50%',
+								background: i === colour_page ? '#90caf9' : '#ddd',
 								cursor: 'pointer',
-								padding: 0,
 							}}
 						/>
 					))}
@@ -150,7 +210,7 @@ function StyleTab({ style, on_style_change, on_rounded_change, is_rounded }: {
 					type="color"
 					value={style.fill === 'none' ? '#ffffff' : style.fill}
 					onChange={e => on_style_change({ fill: e.target.value })}
-					style={{ width: 32, height: 24, border: 'none', cursor: 'pointer' }}
+					style={{ width: 28, height: 22, border: 'none', cursor: 'pointer', padding: 0 }}
 				/>
 				<button
 					onClick={() => on_style_change({ fill: 'none' })}
@@ -167,7 +227,7 @@ function StyleTab({ style, on_style_change, on_rounded_change, is_rounded }: {
 					type="color"
 					value={style.stroke}
 					onChange={e => on_style_change({ stroke: e.target.value })}
-					style={{ width: 32, height: 24, border: 'none', cursor: 'pointer' }}
+					style={{ width: 28, height: 22, border: 'none', cursor: 'pointer', padding: 0 }}
 				/>
 				<input
 					type="number"
@@ -182,21 +242,23 @@ function StyleTab({ style, on_style_change, on_rounded_change, is_rounded }: {
 			</div>
 
 			{/* Opacity */}
-			<div style={row_style}>
-				<label style={label_style}>Opacity</label>
-				<input
-					type="range"
-					min={0}
-					max={100}
-					value={style.opacity ?? 100}
-					onChange={e => on_style_change({ opacity: parseInt(e.target.value) })}
-					style={{ flex: 1 }}
-				/>
-				<span style={{ fontSize: 11, color: '#999', minWidth: 32 }}>{style.opacity ?? 100}%</span>
+			<div style={{ marginBottom: 8 }}>
+				<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+					<label style={{ ...label_style, marginBottom: 0 }}>Opacity</label>
+					<input
+						type="range"
+						min={0}
+						max={100}
+						value={style.opacity ?? 100}
+						onChange={e => on_style_change({ opacity: parseInt(e.target.value) })}
+						style={{ flex: 1, minWidth: 0 }}
+					/>
+					<span style={{ fontSize: 11, color: '#999', minWidth: 28, textAlign: 'right' }}>{style.opacity ?? 100}%</span>
+				</div>
 			</div>
 
 			{/* Checkboxes */}
-			<div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
+			<div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
 				<label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
 					<input type="checkbox" checked={is_rounded} onChange={e => on_rounded_change(e.target.checked)} />
 					Rounded
@@ -468,7 +530,7 @@ const panel_style: React.CSSProperties = {
 	right: 0,
 	top: 0,
 	bottom: 0,
-	width: 240,
+	width: 220,
 	background: '#fff',
 	borderLeft: '1px solid #e0e0e0',
 	display: 'flex',
@@ -476,6 +538,7 @@ const panel_style: React.CSSProperties = {
 	zIndex: 90,
 	boxShadow: '-2px 0 8px rgba(0,0,0,0.05)',
 	overflowY: 'auto',
+	overflowX: 'hidden',
 	fontFamily: 'inherit',
 };
 
@@ -526,4 +589,21 @@ const z_btn_style: React.CSSProperties = {
 	cursor: 'pointer',
 	fontFamily: 'inherit',
 	background: '#f5f5f5',
+};
+
+const nav_btn_style: React.CSSProperties = {
+	width: 20,
+	height: 20,
+	padding: 0,
+	background: 'none',
+	border: '1px solid #ddd',
+	borderRadius: '50%',
+	cursor: 'pointer',
+	fontSize: 14,
+	lineHeight: 1,
+	color: '#888',
+	display: 'flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	flexShrink: 0,
 };
