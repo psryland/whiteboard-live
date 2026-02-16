@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle } from './types';
+import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle, FreehandPath, LaserPoint } from './types';
 import { DEFAULT_STYLE } from './types';
 import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds } from './helpers';
 import { UndoManager } from './undo';
@@ -8,15 +8,19 @@ import { ConnectorRenderer } from './ConnectorRenderer';
 import { Toolbar } from './Toolbar';
 import { ColourPicker } from './ColourPicker';
 import { ShapePalette } from './ShapePalette';
+import { PropertiesPanel } from './PropertiesPanel';
 
 const STORAGE_KEY = 'whitebored-of-peace';
 
 function Load_State(): CanvasState {
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
-		if (raw) return JSON.parse(raw);
+		if (raw) {
+			const parsed = JSON.parse(raw);
+			return { shapes: parsed.shapes || [], connectors: parsed.connectors || [], freehand_paths: parsed.freehand_paths || [] };
+		}
 	} catch { /* ignore */ }
-	return { shapes: [], connectors: [] };
+	return { shapes: [], connectors: [], freehand_paths: [] };
 }
 
 function Save_State(state: CanvasState): void {
@@ -32,6 +36,7 @@ export function Canvas() {
 	// Canvas data
 	const [shapes, set_shapes] = useState<Shape[]>(() => Load_State().shapes);
 	const [connectors, set_connectors] = useState<Connector[]>(() => Load_State().connectors);
+	const [freehand_paths, set_freehand_paths] = useState<FreehandPath[]>(() => Load_State().freehand_paths);
 
 	// Viewport (pan/zoom)
 	const [viewport, set_viewport] = useState<Viewport>({ offset_x: 0, offset_y: 0, zoom: 1 });
@@ -43,19 +48,23 @@ export function Canvas() {
 
 	// Drag state
 	const drag_state = useRef<{
-		type: 'none' | 'pan' | 'move' | 'create' | 'marquee' | 'connector';
+		type: 'none' | 'pan' | 'move' | 'create' | 'marquee' | 'connector' | 'resize' | 'freehand' | 'laser';
 		start_canvas: Point;
 		start_screen: Point;
 		start_viewport?: Viewport;
 		moved?: boolean;
-		// For shape dragging — original positions of selected shapes
 		shape_origins?: Map<string, Point>;
-		// For shape creation — the shape being created
 		creating_shape?: Shape;
-		// For marquee selection
 		marquee_start?: Point;
-		// For connector creation
 		connector_source?: ConnectorEnd;
+		// Resize state
+		resize_shape_id?: string;
+		resize_handle?: number;
+		resize_original?: { x: number; y: number; width: number; height: number };
+		// Freehand state
+		freehand_points?: Point[];
+		// Laser state
+		laser_points?: LaserPoint[];
 	}>({ type: 'none', start_canvas: { x: 0, y: 0 }, start_screen: { x: 0, y: 0 } });
 
 	// Marquee rectangle (screen coords for overlay display)
@@ -67,6 +76,7 @@ export function Canvas() {
 	// Text editing
 	const [editing_shape_id, set_editing_shape_id] = useState<string | null>(null);
 	const text_input_ref = useRef<HTMLInputElement>(null);
+	const editing_started_at = useRef<number>(0);
 
 	// Colour picker
 	const [show_colour_picker, set_show_colour_picker] = useState(false);
@@ -80,10 +90,14 @@ export function Canvas() {
 	// Clipboard for copy/paste
 	const clipboard = useRef<{ shapes: Shape[]; connectors: Connector[] } | null>(null);
 
+	// Laser trail for rendering
+	const [laser_trail, set_laser_trail] = useState<LaserPoint[]>([]);
+	const laser_raf = useRef<number>(0);
+
 	// Persist state on change
 	useEffect(() => {
-		Save_State({ shapes, connectors });
-	}, [shapes, connectors]);
+		Save_State({ shapes, connectors, freehand_paths });
+	}, [shapes, connectors, freehand_paths]);
 
 	// Focus text input when editing
 	useEffect(() => {
@@ -95,26 +109,28 @@ export function Canvas() {
 
 	// Save undo snapshot before making a change
 	const Push_Undo = useCallback(() => {
-		undo_mgr.Push({ shapes, connectors });
-	}, [shapes, connectors, undo_mgr]);
+		undo_mgr.Push({ shapes, connectors, freehand_paths });
+	}, [shapes, connectors, freehand_paths, undo_mgr]);
 
 	const Do_Undo = useCallback(() => {
-		const prev = undo_mgr.Undo({ shapes, connectors });
+		const prev = undo_mgr.Undo({ shapes, connectors, freehand_paths });
 		if (prev) {
 			set_shapes(prev.shapes);
 			set_connectors(prev.connectors);
+			set_freehand_paths(prev.freehand_paths);
 			set_selected_ids(new Set());
 		}
-	}, [shapes, connectors, undo_mgr]);
+	}, [shapes, connectors, freehand_paths, undo_mgr]);
 
 	const Do_Redo = useCallback(() => {
-		const next = undo_mgr.Redo({ shapes, connectors });
+		const next = undo_mgr.Redo({ shapes, connectors, freehand_paths });
 		if (next) {
 			set_shapes(next.shapes);
 			set_connectors(next.connectors);
+			set_freehand_paths(next.freehand_paths);
 			set_selected_ids(new Set());
 		}
-	}, [shapes, connectors, undo_mgr]);
+	}, [shapes, connectors, freehand_paths, undo_mgr]);
 
 	const Delete_Selected = useCallback(() => {
 		if (selected_ids.size === 0) return;
@@ -270,6 +286,55 @@ export function Canvas() {
 					start_screen: screen_pt,
 					connector_source: { shape_id: null, port_id: null, x: canvas_pt.x, y: canvas_pt.y },
 				};
+			} else if (active_tool === 'text') {
+				// Create a text shape immediately and start editing
+				Push_Undo();
+				const new_shape: Shape = {
+					id: Generate_Id('s'),
+					type: 'text',
+					x: canvas_pt.x - 50,
+					y: canvas_pt.y - 15,
+					width: 100,
+					height: 30,
+					text: '',
+					style: { ...DEFAULT_STYLE, fill: 'none', stroke: 'none', stroke_width: 0 },
+					ports: Default_Ports(),
+				};
+				set_shapes(prev => [...prev, new_shape]);
+				set_selected_ids(new Set([new_shape.id]));
+				editing_started_at.current = Date.now();
+				set_editing_shape_id(new_shape.id);
+				set_active_tool('select');
+			} else if (active_tool === 'freehand') {
+				Push_Undo();
+				drag_state.current = {
+					type: 'freehand',
+					start_canvas: canvas_pt,
+					start_screen: screen_pt,
+					freehand_points: [canvas_pt],
+				};
+			} else if (active_tool === 'laser') {
+				const now = Date.now();
+				drag_state.current = {
+					type: 'laser',
+					start_canvas: canvas_pt,
+					start_screen: screen_pt,
+					laser_points: [{ ...canvas_pt, timestamp: now }],
+				};
+				set_laser_trail([{ ...canvas_pt, timestamp: now }]);
+				// Start fade animation
+				const Fade = () => {
+					const cutoff = Date.now() - 1000;
+					set_laser_trail(prev => {
+						const filtered = prev.filter(p => p.timestamp > cutoff);
+						if (filtered.length > 0) {
+							laser_raf.current = requestAnimationFrame(Fade);
+						}
+						return filtered;
+					});
+				};
+				cancelAnimationFrame(laser_raf.current);
+				laser_raf.current = requestAnimationFrame(Fade);
 			} else {
 				// Start creating a shape
 				const new_shape: Shape = {
@@ -344,6 +409,41 @@ export function Canvas() {
 				)
 				: { x: source_end.x, y: source_end.y };
 			set_connector_preview({ from, to: canvas_pt });
+		} else if (ds.type === 'resize' && ds.resize_original && ds.resize_shape_id != null) {
+			const orig = ds.resize_original;
+			const handle = ds.resize_handle!;
+			let { x, y, width, height } = orig;
+			const dx = canvas_pt.x - ds.start_canvas.x;
+			const dy = canvas_pt.y - ds.start_canvas.y;
+
+			// Handle index: 0=TL, 1=TR, 2=BR, 3=BL, 4=T, 5=R, 6=B, 7=L
+			if (handle === 0) { x += dx; y += dy; width -= dx; height -= dy; }
+			else if (handle === 1) { y += dy; width += dx; height -= dy; }
+			else if (handle === 2) { width += dx; height += dy; }
+			else if (handle === 3) { x += dx; width -= dx; height += dy; }
+			else if (handle === 4) { y += dy; height -= dy; }
+			else if (handle === 5) { width += dx; }
+			else if (handle === 6) { height += dy; }
+			else if (handle === 7) { x += dx; width -= dx; }
+
+			// Enforce minimum size
+			if (width < 10) { width = 10; }
+			if (height < 10) { height = 10; }
+
+			set_shapes(prev => prev.map(s =>
+				s.id === ds.resize_shape_id ? { ...s, x, y, width, height } : s
+			));
+		} else if (ds.type === 'freehand' && ds.freehand_points) {
+			ds.freehand_points.push(canvas_pt);
+			// Live preview by updating freehand paths
+			set_freehand_paths(prev => {
+				const without = prev.filter(p => p.id !== '__drawing__');
+				return [...without, { id: '__drawing__', points: [...ds.freehand_points!], style: { stroke: '#333333', stroke_width: 2 } }];
+			});
+		} else if (ds.type === 'laser' && ds.laser_points) {
+			const now = Date.now();
+			ds.laser_points.push({ ...canvas_pt, timestamp: now });
+			set_laser_trail(prev => [...prev.filter(p => p.timestamp > now - 1000), { ...canvas_pt, timestamp: now }]);
 		}
 	}, [viewport, shapes, Get_SVG_Point]);
 
@@ -402,6 +502,22 @@ export function Canvas() {
 			}
 		} else if (ds.type === 'move') {
 			// Move complete — nothing special needed
+		} else if (ds.type === 'resize') {
+			// Resize complete
+		} else if (ds.type === 'freehand' && ds.freehand_points) {
+			// Finalize freehand path
+			if (ds.freehand_points.length > 1) {
+				const path: FreehandPath = {
+					id: Generate_Id('f'),
+					points: ds.freehand_points,
+					style: { stroke: '#333333', stroke_width: 2 },
+				};
+				set_freehand_paths(prev => [...prev.filter(p => p.id !== '__drawing__'), path]);
+			} else {
+				set_freehand_paths(prev => prev.filter(p => p.id !== '__drawing__'));
+			}
+		} else if (ds.type === 'laser') {
+			// Laser trail fades on its own via animation
 		}
 
 		drag_state.current = { type: 'none', start_canvas: { x: 0, y: 0 }, start_screen: { x: 0, y: 0 } };
@@ -414,8 +530,23 @@ export function Canvas() {
 		const screen_pt = Get_SVG_Point(e);
 		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
 
-		// Check if clicking on a port (for connector creation)
+		// Check if clicking on a resize handle
 		const target = e.target as Element;
+		const handle_index = target.getAttribute('data-handle-index');
+		if (handle_index !== null && selected_ids.has(shape.id)) {
+			Push_Undo();
+			drag_state.current = {
+				type: 'resize',
+				start_canvas: canvas_pt,
+				start_screen: screen_pt,
+				resize_shape_id: shape.id,
+				resize_handle: parseInt(handle_index),
+				resize_original: { x: shape.x, y: shape.y, width: shape.width, height: shape.height },
+			};
+			return;
+		}
+
+		// Check if clicking on a port (for connector creation)
 		const port_id = target.getAttribute('data-port-id');
 		if (port_id && active_tool !== 'arrow') {
 			// Start connector from this port
@@ -484,6 +615,7 @@ export function Canvas() {
 	}, [viewport, active_tool, selected_ids, shapes, Push_Undo, Get_SVG_Point]);
 
 	const Handle_Shape_DoubleClick = useCallback((_e: React.MouseEvent, shape: Shape) => {
+		editing_started_at.current = Date.now();
 		set_editing_shape_id(shape.id);
 		set_selected_ids(new Set([shape.id]));
 	}, []);
@@ -496,6 +628,8 @@ export function Canvas() {
 	}, [editing_shape_id]);
 
 	const Handle_Text_Commit = useCallback(() => {
+		// Guard against immediate blur when input first mounts
+		if (Date.now() - editing_started_at.current < 200) return;
 		set_editing_shape_id(null);
 	}, []);
 
@@ -517,6 +651,7 @@ export function Canvas() {
 		};
 		set_shapes(prev => [...prev, new_shape]);
 		set_selected_ids(new Set([new_shape.id]));
+		editing_started_at.current = Date.now();
 		set_editing_shape_id(new_shape.id);
 		set_active_tool('select');
 	}, [viewport, Push_Undo, Get_SVG_Point]);
@@ -570,6 +705,16 @@ export function Canvas() {
 				case 'Escape':
 					set_selected_ids(new Set());
 					set_active_tool('select');
+					set_show_colour_picker(false);
+					break;
+				case 'F2':
+					// Edit text of selected shape
+					if (selected_ids.size === 1) {
+						const id = Array.from(selected_ids)[0];
+						editing_started_at.current = Date.now();
+						set_editing_shape_id(id);
+					}
+					e.preventDefault();
 					break;
 				case 'v': case 'V': set_active_tool('select'); break;
 				case 'r': case 'R': set_active_tool('rectangle'); break;
@@ -577,6 +722,11 @@ export function Canvas() {
 				case 'd': case 'D': set_active_tool('diamond'); break;
 				case 't': case 'T': set_active_tool('text'); break;
 				case 'a': case 'A': set_active_tool('arrow'); break;
+				case 'p': case 'P': set_active_tool('freehand'); break;
+				case 'l': case 'L': set_active_tool('laser'); break;
+				case 'c': case 'C':
+					if (selected_ids.size > 0) set_show_colour_picker(prev => !prev);
+					break;
 			}
 		}
 
@@ -609,6 +759,29 @@ export function Canvas() {
 		}
 		return DEFAULT_STYLE;
 	})();
+
+	const selected_shapes = shapes.filter(s => selected_ids.has(s.id));
+
+	// Properties panel handlers
+	const Handle_Position_Change = useCallback((changes: { x?: number; y?: number; width?: number; height?: number }) => {
+		Push_Undo();
+		set_shapes(prev => prev.map(s => {
+			if (!selected_ids.has(s.id)) return s;
+			return {
+				...s,
+				...(changes.x !== undefined && { x: changes.x }),
+				...(changes.y !== undefined && { y: changes.y }),
+				...(changes.width !== undefined && { width: changes.width }),
+				...(changes.height !== undefined && { height: changes.height }),
+			};
+		}));
+	}, [selected_ids, Push_Undo]);
+
+	const Handle_Panel_Text_Change = useCallback((text: string) => {
+		set_shapes(prev => prev.map(s =>
+			selected_ids.has(s.id) ? { ...s, text } : s
+		));
+	}, [selected_ids]);
 
 	return (
 		<div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#f8f9fa' }}>
@@ -698,6 +871,43 @@ export function Canvas() {
 							pointerEvents="none"
 						/>
 					)}
+
+					{/* Freehand paths */}
+					{freehand_paths.map(path => (
+						<polyline
+							key={path.id}
+							points={path.points.map(p => `${p.x},${p.y}`).join(' ')}
+							fill="none"
+							stroke={path.style.stroke}
+							strokeWidth={path.style.stroke_width}
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							pointerEvents="none"
+						/>
+					))}
+
+					{/* Laser pointer trail */}
+					{laser_trail.length > 1 && (() => {
+						const now = Date.now();
+						return laser_trail.map((pt, i) => {
+							if (i === 0) return null;
+							const prev = laser_trail[i - 1];
+							const age = (now - pt.timestamp) / 1000;
+							const opacity = Math.max(0, 1 - age);
+							return (
+								<line
+									key={i}
+									x1={prev.x} y1={prev.y}
+									x2={pt.x} y2={pt.y}
+									stroke="red"
+									strokeWidth={3}
+									strokeLinecap="round"
+									opacity={opacity}
+									pointerEvents="none"
+								/>
+							);
+						});
+					})()}
 				</g>
 
 				{/* Marquee selection (screen coords, outside the transform) */}
@@ -745,6 +955,16 @@ export function Canvas() {
 					}}
 				/>
 			)}
+
+			{/* Properties panel */}
+			<PropertiesPanel
+				selected_shapes={selected_shapes}
+				on_style_change={Apply_Style_Change}
+				on_position_change={Handle_Position_Change}
+				on_text_change={Handle_Panel_Text_Change}
+				on_opacity_change={() => {}}
+				on_rounded_change={() => {}}
+			/>
 		</div>
 	);
 }

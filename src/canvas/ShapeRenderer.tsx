@@ -86,8 +86,10 @@ export function ShapeRenderer({
 }
 
 // Blue resize handles at corners and edge midpoints
+const HANDLE_CURSORS = ['nw-resize', 'ne-resize', 'se-resize', 'sw-resize', 'n-resize', 'e-resize', 's-resize', 'w-resize'];
+
 function SelectionHandles({ x, y, width, height }: { x: number; y: number; width: number; height: number }) {
-	const handle_size = 6;
+	const handle_size = 7;
 	const hs = handle_size / 2;
 	const points = [
 		{ cx: x, cy: y },
@@ -122,7 +124,8 @@ function SelectionHandles({ x, y, width, height }: { x: number; y: number; width
 					fill="white"
 					stroke="#2196F3"
 					strokeWidth={1.5}
-					style={{ cursor: 'nwse-resize' }}
+					data-handle-index={i}
+					style={{ cursor: HANDLE_CURSORS[i] }}
 				/>
 			))}
 		</>

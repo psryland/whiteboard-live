@@ -27,6 +27,8 @@ const TOOLS: ToolButton[] = [
 	{ tool: 'diamond', label: 'Diamond', icon: '◇', shortcut: 'D' },
 	{ tool: 'text', label: 'Text', icon: 'T', shortcut: 'T' },
 	{ tool: 'arrow', label: 'Arrow', icon: '→', shortcut: 'A' },
+	{ tool: 'freehand', label: 'Freehand', icon: '✎', shortcut: 'P' },
+	{ tool: 'laser', label: 'Laser Pointer', icon: '◎', shortcut: 'L' },
 ];
 
 export function Toolbar({

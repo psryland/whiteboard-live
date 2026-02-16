@@ -79,12 +79,28 @@ export interface Connector {
 export interface CanvasState {
 	shapes: Shape[];
 	connectors: Connector[];
+	freehand_paths: FreehandPath[];
 }
 
-export type ToolType = 'select' | 'rectangle' | 'ellipse' | 'diamond' | 'text' | 'arrow';
+export type ToolType = 'select' | 'rectangle' | 'ellipse' | 'diamond' | 'text' | 'arrow' | 'freehand' | 'laser';
 
 export interface Viewport {
 	offset_x: number;
 	offset_y: number;
 	zoom: number;
+}
+
+export interface FreehandPath {
+	id: string;
+	points: Point[];
+	style: {
+		stroke: string;
+		stroke_width: number;
+	};
+}
+
+export interface LaserPoint {
+	x: number;
+	y: number;
+	timestamp: number;
 }

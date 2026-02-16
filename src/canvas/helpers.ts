@@ -6,13 +6,23 @@ export function Generate_Id(prefix: string = 's'): string {
 	return `${prefix}_${next_id++}_${Date.now().toString(36)}`;
 }
 
-// Default ports at the midpoint of each edge
+// Ports at corners and multiple points along each edge
 export function Default_Ports(): Port[] {
 	return [
+		// Edge midpoints
 		{ id: 'top', side: 'top', offset: 0.5 },
 		{ id: 'right', side: 'right', offset: 0.5 },
 		{ id: 'bottom', side: 'bottom', offset: 0.5 },
 		{ id: 'left', side: 'left', offset: 0.5 },
+		// Edge quarter points
+		{ id: 'top-q1', side: 'top', offset: 0.25 },
+		{ id: 'top-q3', side: 'top', offset: 0.75 },
+		{ id: 'bottom-q1', side: 'bottom', offset: 0.25 },
+		{ id: 'bottom-q3', side: 'bottom', offset: 0.75 },
+		{ id: 'left-q1', side: 'left', offset: 0.25 },
+		{ id: 'left-q3', side: 'left', offset: 0.75 },
+		{ id: 'right-q1', side: 'right', offset: 0.25 },
+		{ id: 'right-q3', side: 'right', offset: 0.75 },
 	];
 }
 
