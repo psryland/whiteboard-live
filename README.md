@@ -2,7 +2,9 @@
 
 A Draw.io-style infinite canvas whiteboard/diagramming tool for Microsoft Teams, built with React + TypeScript + custom SVG canvas engine.
 
-Features: shapes, connectors (straight/smooth/ortho), freehand drawing, text, laser pointer, z-ordering, snap-to-grid, export (SVG/PNG), and **live collaboration** via Azure Web PubSub.
+Developed by [Rylogic](https://www.rylogic.co.nz).
+
+Features: shapes, connectors (straight/smooth/ortho), freehand drawing, text, laser pointer, z-ordering, snap-to-grid, export (SVG/PNG), cloud storage (OneDrive/SharePoint), and **live collaboration** via Azure Web PubSub.
 
 ## Prerequisites
 
