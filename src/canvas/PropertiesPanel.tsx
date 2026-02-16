@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Shape, ShapeStyle, Connector, ArrowType, ConnectorRouting, FreehandPath, CollabUser } from './types';
 import { PresenceAvatars } from './RemoteCursors';
-import { CollabSession } from './Collaboration';
+import { CollabSession, Share_Url } from './Collaboration';
 
 interface PropertiesPanelProps {
 	selected_shapes: Shape[];
@@ -77,38 +77,93 @@ export function PropertiesPanel({
 	on_stop_sharing,
 }: PropertiesPanelProps) {
 	const [active_tab, set_active_tab] = useState<'style' | 'text' | 'arrange'>('style');
+	const [access_level, set_access_level] = useState<'edit' | 'view'>('edit');
+	const [copied, set_copied] = useState(false);
+
+	function Handle_Copy_Link() {
+		if (!collab_session) return;
+		const url = Share_Url(collab_session.Room_Id) + `&access=${access_level}`;
+		navigator.clipboard.writeText(url);
+		set_copied(true);
+		setTimeout(() => set_copied(false), 2000);
+	}
 
 	// Collaboration controls — positioned to overflow left of the panel
 	const collab_controls = (
 		<div style={{
 			position: 'absolute', top: 8, right: '100%', marginRight: 6,
-			display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+			display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6,
+			whiteSpace: 'nowrap', pointerEvents: 'auto',
 		}}>
-			{collab_session && (
-				<PresenceAvatars users={remote_users} self_name={collab_session.User_Name} />
-			)}
-			{!collab_session ? (
-				<button
-					onClick={on_start_sharing}
-					style={{
-						padding: '6px 14px', borderRadius: 8, border: 'none',
-						background: '#2196F3', color: '#fff', fontSize: 12,
-						fontWeight: 600, cursor: 'pointer', display: 'flex',
-						alignItems: 'center', gap: 6,
-						boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-					}}
-				>🔗 Share</button>
-			) : (
-				<button
-					onClick={on_stop_sharing}
-					style={{
-						padding: '6px 14px', borderRadius: 8, border: 'none',
-						background: collab_connected ? '#4CAF50' : '#ff9800',
-						color: '#fff', fontSize: 12, fontWeight: 600,
-						cursor: 'pointer',
-						boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-					}}
-				>{collab_connected ? '● Live' : '○ Connecting...'}</button>
+			<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+				{collab_session && (
+					<PresenceAvatars users={remote_users} self_name={collab_session.User_Name} />
+				)}
+				{!collab_session ? (
+					<button
+						onClick={on_start_sharing}
+						style={{
+							padding: '6px 14px', borderRadius: 8, border: 'none',
+							background: '#2196F3', color: '#fff', fontSize: 12,
+							fontWeight: 600, cursor: 'pointer', display: 'flex',
+							alignItems: 'center', gap: 6,
+							boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+						}}
+					>🔗 Share</button>
+				) : (
+					<button
+						onClick={on_stop_sharing}
+						style={{
+							padding: '6px 14px', borderRadius: 8, border: 'none',
+							background: collab_connected ? '#4CAF50' : '#ff9800',
+							color: '#fff', fontSize: 12, fontWeight: 600,
+							cursor: 'pointer',
+							boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+						}}
+					>{collab_connected ? '● Live' : '○ Connecting...'}</button>
+				)}
+			</div>
+
+			{/* Share link panel — shown when live session is active */}
+			{collab_session && collab_connected && (
+				<div style={{
+					background: '#fff', border: '1px solid #c8e1ff', borderRadius: 10,
+					padding: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.1)', width: 260,
+				}} onPointerDown={e => e.stopPropagation()}>
+					<div style={{ fontSize: 11, fontWeight: 600, color: '#1565C0', marginBottom: 6 }}>
+						Share Link
+					</div>
+					<div style={{
+						fontSize: 10, color: '#666', background: '#f5f5f5', borderRadius: 4,
+						padding: '4px 6px', wordBreak: 'break-all', marginBottom: 8,
+						border: '1px solid #e0e0e0', lineHeight: 1.4,
+					}}>
+						{Share_Url(collab_session.Room_Id)}
+					</div>
+					<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+						<label style={{ fontSize: 11, color: '#555' }}>Access:</label>
+						<select
+							value={access_level}
+							onChange={e => set_access_level(e.target.value as 'edit' | 'view')}
+							style={{
+								flex: 1, padding: '3px 6px', borderRadius: 4, fontSize: 11,
+								border: '1px solid #ccc', background: '#fff', cursor: 'pointer',
+							}}
+						>
+							<option value="edit">Can edit</option>
+							<option value="view">View only</option>
+						</select>
+						<button
+							onClick={Handle_Copy_Link}
+							style={{
+								padding: '4px 10px', borderRadius: 4, border: 'none',
+								background: copied ? '#4CAF50' : '#2196F3', color: '#fff',
+								fontSize: 11, fontWeight: 600, cursor: 'pointer',
+								transition: 'background 0.2s',
+							}}
+						>{copied ? '✓ Copied' : '📋 Copy'}</button>
+					</div>
+				</div>
 			)}
 		</div>
 	);
