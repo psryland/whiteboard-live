@@ -8,10 +8,21 @@ import { Canvas } from './canvas/Canvas';
 
 const msal_instance = new PublicClientApplication(msal_config);
 
-// Initialize MSAL and process any pending auth redirect (e.g. when popup was blocked)
-const msal_init = msal_instance.initialize().then(() =>
-	msal_instance.handleRedirectPromise().catch(() => null)
-);
+// Initialize MSAL and process any pending auth redirect
+const msal_init = msal_instance.initialize().then(async () => {
+	const result = await msal_instance.handleRedirectPromise().catch(() => null);
+	// If we got an auth result from redirect, set the active account
+	if (result?.account) {
+		msal_instance.setActiveAccount(result.account);
+	}
+	// If no active account but there are cached accounts, set the first one
+	if (!msal_instance.getActiveAccount()) {
+		const accounts = msal_instance.getAllAccounts();
+		if (accounts.length > 0) {
+			msal_instance.setActiveAccount(accounts[0]);
+		}
+	}
+});
 
 // Error boundary to catch and display React rendering errors
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
