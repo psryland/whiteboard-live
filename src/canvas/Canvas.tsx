@@ -1761,7 +1761,7 @@ export function Canvas() {
 			{/* Collab share link panel */}
 			{collab_session && collab_connected && (
 				<div style={{
-					position: 'absolute', top: 56, right: 8, background: '#fff',
+					position: 'absolute', top: 56, right: 228, background: '#fff',
 					border: '1px solid #c8e1ff', borderRadius: 10, padding: 10,
 					boxShadow: '0 2px 8px rgba(0,0,0,0.1)', zIndex: 95, width: 240,
 				}} onPointerDown={e => e.stopPropagation()}>

@@ -346,10 +346,10 @@ export function Toolbar({
 			{/* Delete */}
 			<ToolBtn icon="🗑" label="Delete (Del)" active={false} on_click={on_delete} disabled={!has_selection} />
 
-			{/* Collaboration controls — positioned at right edge of screen */}
+			{/* Collaboration controls — positioned just left of the properties panel */}
 			{children && (
 				<div style={{
-					position: 'fixed', top: 12, right: 16,
+					position: 'fixed', top: 12, right: 228,
 					display: 'flex', alignItems: 'center', gap: 6,
 					zIndex: 101,
 				}}>
