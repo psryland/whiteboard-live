@@ -217,45 +217,90 @@ export function Snap_To_Grid(value: number, grid_size: number = DEFAULT_GRID_SIZ
 }
 
 // Default bézier control points that leave the shape perpendicular to the port edge.
-// When port sides are provided, each CP extends outward from the endpoint in the
-// direction normal to that edge, rotated by the shape's rotation angle.
-// Otherwise falls back to 1/3 and 2/3 along the line.
-export function Default_Control_Points(source: Point, target: Point, source_side?: string, target_side?: string, source_rotation?: number, target_rotation?: number): Point[] {
+// Compute the outward-facing normal direction at a port on a shape.
+// Returns an un-normalised direction vector pointing away from the shape surface.
+// Accounts for shape type (rectangle, diamond, ellipse) and rotation.
+export function Port_Outward_Normal(shape: Shape, port: Port): Point {
+	const cx = shape.x + shape.width / 2;
+	const cy = shape.y + shape.height / 2;
+	let nx = 0, ny = 0;
+
+	if (shape.type === 'ellipse') {
+		// Ellipse normal = gradient of the ellipse equation at the port, which in
+		// local coords is (px-cx)/(rx²), (py-cy)/(ry²). Simpler: direction from
+		// centre to the port position (un-rotated) is a good approximation and
+		// exact for circles.
+		const pos = Port_Position(shape, port, false);
+		nx = pos.x - cx;
+		ny = pos.y - cy;
+
+	} else if (shape.type === 'diamond') {
+		// Diamond edges have fixed normals. Work out which edge the port sits on
+		// then return the outward perpendicular of that edge.
+		const w = shape.width, h = shape.height;
+		// Edge vectors (top→right, right→bottom, bottom→left, left→top) and their
+		// outward-pointing right-hand normals:
+		//   top→right   edge (w/2, h/2)   normal ( h, -w)  (points up-right)
+		//   right→bottom edge (-w/2, h/2)  normal ( h,  w)  (points down-right)
+		//   bottom→left  edge (-w/2,-h/2)  normal (-h,  w)  (points down-left)
+		//   left→top     edge ( w/2,-h/2)  normal (-h, -w)  (points up-left)
+		const edge_normals: Record<string, [Point, Point]> = {
+			top:    [{ x: -h, y: -w }, { x:  h, y: -w }],   // left→top edge, top→right edge
+			right:  [{ x:  h, y: -w }, { x:  h, y:  w }],   // top→right edge, right→bottom edge
+			bottom: [{ x:  h, y:  w }, { x: -h, y:  w }],   // right→bottom edge, bottom→left edge
+			left:   [{ x: -h, y:  w }, { x: -h, y: -w }],   // bottom→left edge, left→top edge
+		};
+		const normals = edge_normals[port.side];
+		if (normals) {
+			// offset ≤0.5 → first edge half, >0.5 → second edge half
+			const n = port.offset <= 0.5 ? normals[0] : normals[1];
+			nx = n.x;
+			ny = n.y;
+		}
+
+	} else {
+		// Rectangle / text — outward normal is simply the side direction
+		switch (port.side) {
+			case 'top':    ny = -1; break;
+			case 'bottom': ny = 1; break;
+			case 'left':   nx = -1; break;
+			case 'right':  nx = 1; break;
+		}
+	}
+
+	// Rotate the normal by the shape's rotation
+	if (shape.rotation) {
+		const rad = shape.rotation * Math.PI / 180;
+		const cos = Math.cos(rad);
+		const sin = Math.sin(rad);
+		const rnx = nx * cos - ny * sin;
+		const rny = nx * sin + ny * cos;
+		nx = rnx;
+		ny = rny;
+	}
+
+	return { x: nx, y: ny };
+}
+
+// Compute default bézier control points for a connector between source and target.
+// When outward normal vectors are provided, each CP extends in that direction scaled
+// to arm length. Otherwise falls back to 1/3 and 2/3 along the line.
+export function Default_Control_Points(source: Point, target: Point, source_normal?: Point, target_normal?: Point): Point[] {
 	const dist = Math.hypot(target.x - source.x, target.y - source.y);
 	const arm = Math.max(30, dist * 0.4);
 
-	function Extend(pt: Point, side: string | undefined, fallback_dx: number, fallback_dy: number, rotation?: number): Point {
-		if (!side) return { x: pt.x + fallback_dx, y: pt.y + fallback_dy };
-
-		// Axis-aligned direction for this port side
-		let dx = 0, dy = 0;
-		switch (side) {
-			case 'top':    dy = -arm; break;
-			case 'bottom': dy = arm; break;
-			case 'left':   dx = -arm; break;
-			case 'right':  dx = arm; break;
-			default:       return { x: pt.x + fallback_dx, y: pt.y + fallback_dy };
-		}
-
-		// Rotate the direction vector by the shape's rotation
-		if (rotation) {
-			const rad = rotation * Math.PI / 180;
-			const cos = Math.cos(rad);
-			const sin = Math.sin(rad);
-			const rdx = dx * cos - dy * sin;
-			const rdy = dx * sin + dy * cos;
-			dx = rdx;
-			dy = rdy;
-		}
-
-		return { x: pt.x + dx, y: pt.y + dy };
+	function Extend(pt: Point, normal: Point | undefined, fallback_dx: number, fallback_dy: number): Point {
+		if (!normal) return { x: pt.x + fallback_dx, y: pt.y + fallback_dy };
+		const len = Math.hypot(normal.x, normal.y);
+		if (len < 0.001) return { x: pt.x + fallback_dx, y: pt.y + fallback_dy };
+		return { x: pt.x + (normal.x / len) * arm, y: pt.y + (normal.y / len) * arm };
 	}
 
 	const dx = target.x - source.x;
 	const dy = target.y - source.y;
 	return [
-		Extend(source, source_side, dx * 0.33, dy * 0.33, source_rotation),
-		Extend(target, target_side, -dx * 0.33, -dy * 0.33, target_rotation),
+		Extend(source, source_normal, dx * 0.33, dy * 0.33),
+		Extend(target, target_normal, -dx * 0.33, -dy * 0.33),
 	];
 }
 

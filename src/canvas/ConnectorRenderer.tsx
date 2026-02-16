@@ -1,5 +1,5 @@
 import type { Connector, Shape, Point } from './types';
-import { Port_Position, Default_Control_Points } from './helpers';
+import { Port_Position, Port_Outward_Normal, Default_Control_Points } from './helpers';
 
 interface ConnectorRendererProps {
 	connector: Connector;
@@ -24,14 +24,12 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 	const arrow_type = connector.arrow_type ?? 'forward';
 	const routing = connector.routing ?? 'ortho';
 
-	// Resolve port sides and rotations for perpendicular control points
-	const source_side = Resolve_Port_Side(connector.source, shapes);
-	const target_side = Resolve_Port_Side(connector.target, shapes);
-	const source_rotation = Resolve_Rotation(connector.source, shapes);
-	const target_rotation = Resolve_Rotation(connector.target, shapes);
+	// Resolve outward normals at each port for perpendicular control points
+	const source_normal = Resolve_Normal(connector.source, shapes);
+	const target_normal = Resolve_Normal(connector.target, shapes);
 
 	// Resolve control points for smooth routing
-	const cp = connector.control_points ?? Default_Control_Points(source, target, source_side, target_side, source_rotation, target_rotation);
+	const cp = connector.control_points ?? Default_Control_Points(source, target, source_normal, target_normal);
 
 	if (routing === 'smooth') {
 		// Cubic bézier spline
@@ -251,17 +249,12 @@ function EndpointHandle({ pt, end, connector_id, on_drag }: {
 	);
 }
 
-// Get the port side ('top'|'right'|'bottom'|'left') for a connector endpoint
-function Resolve_Port_Side(end: Connector['source'], shapes: Shape[]): string | undefined {
+// Get the outward normal direction at the port a connector endpoint is attached to
+function Resolve_Normal(end: Connector['source'], shapes: Shape[]): Point | undefined {
 	if (!end.shape_id || !end.port_id) return undefined;
 	const shape = shapes.find(s => s.id === end.shape_id);
 	if (!shape) return undefined;
 	const port = shape.ports.find(p => p.id === end.port_id);
-	return port?.side;
-}
-
-function Resolve_Rotation(end: Connector['source'], shapes: Shape[]): number | undefined {
-	if (!end.shape_id) return undefined;
-	const shape = shapes.find(s => s.id === end.shape_id);
-	return shape?.rotation || undefined;
+	if (!port) return undefined;
+	return Port_Outward_Normal(shape, port);
 }

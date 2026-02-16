@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle, FreehandPath, LaserPoint, ToolSettings, CollabUser } from './types';
 import { DEFAULT_STYLE, DEFAULT_TOOL_SETTINGS } from './types';
-import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, DEFAULT_GRID_SIZE, DEFAULT_GRID_MAJOR_MULT, Freehand_Bounds, Simplify_Points, Smooth_Points, Get_Svg_Path_From_Stroke, Default_Control_Points } from './helpers';
+import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Port_Outward_Normal, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, DEFAULT_GRID_SIZE, DEFAULT_GRID_MAJOR_MULT, Freehand_Bounds, Simplify_Points, Smooth_Points, Get_Svg_Path_From_Stroke, Default_Control_Points } from './helpers';
 import { getStroke } from 'perfect-freehand';
 import { UndoManager } from './undo';
 import { ShapeRenderer } from './ShapeRenderer';
@@ -27,16 +27,13 @@ function Resolve_Connector_End(end: ConnectorEnd, shapes: Shape[]): Point {
 	return { x: end.x, y: end.y };
 }
 
-function Resolve_Port_Side_For_End(end: ConnectorEnd, shapes: Shape[]): string | undefined {
+function Resolve_Normal_For_End(end: ConnectorEnd, shapes: Shape[]): Point | undefined {
 	if (!end.shape_id || !end.port_id) return undefined;
 	const shape = shapes.find(s => s.id === end.shape_id);
-	return shape?.ports.find(p => p.id === end.port_id)?.side;
-}
-
-function Resolve_Rotation_For_End(end: ConnectorEnd, shapes: Shape[]): number | undefined {
-	if (!end.shape_id) return undefined;
-	const shape = shapes.find(s => s.id === end.shape_id);
-	return shape?.rotation || undefined;
+	if (!shape) return undefined;
+	const port = shape.ports.find(p => p.id === end.port_id);
+	if (!port) return undefined;
+	return Port_Outward_Normal(shape, port);
 }
 
 function Load_State(): CanvasState & { max_z: number } {
@@ -822,11 +819,9 @@ export function Canvas() {
 				if (c.id !== ds.cp_connector_id) return c;
 				const source_pt = Resolve_Connector_End(c.source, shapes);
 				const target_pt = Resolve_Connector_End(c.target, shapes);
-				const src_side = Resolve_Port_Side_For_End(c.source, shapes);
-				const tgt_side = Resolve_Port_Side_For_End(c.target, shapes);
-				const src_rot = Resolve_Rotation_For_End(c.source, shapes);
-				const tgt_rot = Resolve_Rotation_For_End(c.target, shapes);
-				const cp = [...(c.control_points || Default_Control_Points(source_pt, target_pt, src_side, tgt_side, src_rot, tgt_rot))];
+				const src_normal = Resolve_Normal_For_End(c.source, shapes);
+				const tgt_normal = Resolve_Normal_For_End(c.target, shapes);
+				const cp = [...(c.control_points || Default_Control_Points(source_pt, target_pt, src_normal, tgt_normal))];
 				cp[ds.cp_index!] = canvas_pt;
 				return { ...c, control_points: cp };
 			}));
@@ -856,11 +851,9 @@ export function Canvas() {
 				if (c.id !== ds.endpoint_connector_id) return c;
 				const src_pt = Resolve_Connector_End(c.source, shapes);
 				const tgt_pt = Resolve_Connector_End(c.target, shapes);
-				const src_side = Resolve_Port_Side_For_End(c.source, shapes);
-				const tgt_side = Resolve_Port_Side_For_End(c.target, shapes);
-				const src_rot = Resolve_Rotation_For_End(c.source, shapes);
-				const tgt_rot = Resolve_Rotation_For_End(c.target, shapes);
-				const cp = [...(c.control_points || Default_Control_Points(src_pt, tgt_pt, src_side, tgt_side, src_rot, tgt_rot))];
+				const src_normal = Resolve_Normal_For_End(c.source, shapes);
+				const tgt_normal = Resolve_Normal_For_End(c.target, shapes);
+				const cp = [...(c.control_points || Default_Control_Points(src_pt, tgt_pt, src_normal, tgt_normal))];
 				if (orig_cp) {
 					cp[cp_index] = { x: orig_cp.x + dx, y: orig_cp.y + dy };
 				}
@@ -1009,11 +1002,9 @@ export function Canvas() {
 
 				const src_pt = Resolve_Connector_End(c.source, shapes);
 				const tgt_pt = Resolve_Connector_End(c.target, shapes);
-				const src_side = Resolve_Port_Side_For_End(c.source, shapes);
-				const tgt_side = Resolve_Port_Side_For_End(c.target, shapes);
-				const src_rot = Resolve_Rotation_For_End(c.source, shapes);
-				const tgt_rot = Resolve_Rotation_For_End(c.target, shapes);
-				const defaults = Default_Control_Points(src_pt, tgt_pt, src_side, tgt_side, src_rot, tgt_rot);
+				const src_normal = Resolve_Normal_For_End(c.source, shapes);
+				const tgt_normal = Resolve_Normal_For_End(c.target, shapes);
+				const defaults = Default_Control_Points(src_pt, tgt_pt, src_normal, tgt_normal);
 				const cp = [...(c.control_points || defaults)];
 				const cp_index = ds.endpoint_end === 'source' ? 0 : 1;
 				cp[cp_index] = defaults[cp_index]; // perpendicular to the snapped port
@@ -1331,11 +1322,9 @@ export function Canvas() {
 		const cp_index = end === 'source' ? 0 : 1;
 		const src_pt = conn ? Resolve_Connector_End(conn.source, shapes) : canvas_pt;
 		const tgt_pt = conn ? Resolve_Connector_End(conn.target, shapes) : canvas_pt;
-		const src_side = conn ? Resolve_Port_Side_For_End(conn.source, shapes) : undefined;
-		const tgt_side = conn ? Resolve_Port_Side_For_End(conn.target, shapes) : undefined;
-		const src_rot = conn ? Resolve_Rotation_For_End(conn.source, shapes) : undefined;
-		const tgt_rot = conn ? Resolve_Rotation_For_End(conn.target, shapes) : undefined;
-		const cps = conn?.control_points || Default_Control_Points(src_pt, tgt_pt, src_side, tgt_side, src_rot, tgt_rot);
+		const src_normal = conn ? Resolve_Normal_For_End(conn.source, shapes) : undefined;
+		const tgt_normal = conn ? Resolve_Normal_For_End(conn.target, shapes) : undefined;
+		const cps = conn?.control_points || Default_Control_Points(src_pt, tgt_pt, src_normal, tgt_normal);
 		const orig_cp = cps[cp_index];
 
 		Push_Undo();
