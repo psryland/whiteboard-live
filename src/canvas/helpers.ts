@@ -133,10 +133,10 @@ export function Diamond_Points(x: number, y: number, w: number, h: number): stri
 	return `${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}`;
 }
 
-// Snap a value to the nearest grid increment
-export const GRID_SIZE = 10;
-export const GRID_MAJOR = 100;
+// Grid defaults (overridden by user preference)
+export const DEFAULT_GRID_SIZE = 10;
+export const DEFAULT_GRID_MAJOR_MULT = 10; // major lines every N minor lines
 
-export function Snap_To_Grid(value: number, grid_size: number = GRID_SIZE): number {
+export function Snap_To_Grid(value: number, grid_size: number = DEFAULT_GRID_SIZE): number {
 	return Math.round(value / grid_size) * grid_size;
 }

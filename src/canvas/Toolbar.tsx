@@ -10,6 +10,8 @@ interface ToolbarProps {
 	on_duplicate: () => void;
 	snap_enabled: boolean;
 	on_toggle_snap: () => void;
+	grid_size: number;
+	on_grid_size_change: (size: number) => void;
 	can_undo: boolean;
 	can_redo: boolean;
 	has_selection: boolean;
@@ -43,6 +45,8 @@ export function Toolbar({
 	on_duplicate,
 	snap_enabled,
 	on_toggle_snap,
+	grid_size,
+	on_grid_size_change,
 	can_undo,
 	can_redo,
 	has_selection,
@@ -81,6 +85,28 @@ export function Toolbar({
 					border: snap_enabled ? '1px solid #90caf9' : '1px solid #ddd',
 				}}
 			>⊞</button>
+			<select
+				value={grid_size}
+				onChange={e => on_grid_size_change(parseInt(e.target.value))}
+				title="Grid Size"
+				style={{
+					height: 36,
+					border: '1px solid #ddd',
+					borderRadius: 6,
+					fontSize: 12,
+					padding: '0 4px',
+					cursor: 'pointer',
+					background: '#fff',
+					color: '#555',
+					fontFamily: 'inherit',
+				}}
+			>
+				<option value={5}>5px</option>
+				<option value={10}>10px</option>
+				<option value={20}>20px</option>
+				<option value={25}>25px</option>
+				<option value={50}>50px</option>
+			</select>
 
 			<div style={separator_style} />
 

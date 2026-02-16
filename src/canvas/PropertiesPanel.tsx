@@ -48,15 +48,18 @@ export function PropertiesPanel({
 						onClick={() => set_active_tab(tab)}
 						style={{
 							flex: 1,
-							padding: '8px 4px',
+							padding: '10px 4px',
 							border: 'none',
 							borderBottom: active_tab === tab ? '2px solid #2196F3' : '2px solid transparent',
 							background: 'none',
 							cursor: 'pointer',
 							fontSize: 12,
-							fontWeight: 600,
-							color: active_tab === tab ? '#2196F3' : '#666',
-							textTransform: 'capitalize',
+							fontWeight: 500,
+							color: active_tab === tab ? '#2196F3' : '#888',
+							textTransform: 'uppercase',
+							letterSpacing: 0.5,
+							fontFamily: 'inherit',
+							transition: 'color 0.15s, border-color 0.15s',
 						}}
 					>
 						{tab}
@@ -315,6 +318,7 @@ const panel_style: React.CSSProperties = {
 	zIndex: 90,
 	boxShadow: '-2px 0 8px rgba(0,0,0,0.05)',
 	overflowY: 'auto',
+	fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
 };
 
 const row_style: React.CSSProperties = {
@@ -325,27 +329,33 @@ const row_style: React.CSSProperties = {
 };
 
 const label_style: React.CSSProperties = {
-	fontSize: 12,
-	fontWeight: 600,
-	color: '#555',
+	fontSize: 11,
+	fontWeight: 500,
+	color: '#777',
 	minWidth: 48,
 	display: 'block',
 	marginBottom: 2,
+	letterSpacing: 0.3,
+	textTransform: 'uppercase',
 };
 
 const input_style: React.CSSProperties = {
-	padding: '3px 6px',
-	border: '1px solid #ddd',
-	borderRadius: 4,
-	fontSize: 12,
+	padding: '5px 8px',
+	border: '1px solid #e0e0e0',
+	borderRadius: 6,
+	fontSize: 13,
 	outline: 'none',
 	boxSizing: 'border-box',
+	fontFamily: 'inherit',
+	transition: 'border-color 0.15s',
 };
 
 const mini_btn_style: React.CSSProperties = {
-	padding: '2px 8px',
-	border: '1px solid #ddd',
-	borderRadius: 4,
+	padding: '4px 10px',
+	border: '1px solid #e0e0e0',
+	borderRadius: 6,
 	fontSize: 11,
 	cursor: 'pointer',
+	fontFamily: 'inherit',
+	fontWeight: 500,
 };

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle, FreehandPath, LaserPoint } from './types';
 import { DEFAULT_STYLE } from './types';
-import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, GRID_SIZE, GRID_MAJOR } from './helpers';
+import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, DEFAULT_GRID_SIZE, DEFAULT_GRID_MAJOR_MULT } from './helpers';
 import { UndoManager } from './undo';
 import { ShapeRenderer } from './ShapeRenderer';
 import { ConnectorRenderer } from './ConnectorRenderer';
@@ -50,6 +50,7 @@ export function Canvas() {
 
 	// Grid snapping
 	const [snap_enabled, set_snap_enabled] = useState(true);
+	const [grid_size, set_grid_size] = useState(DEFAULT_GRID_SIZE);
 
 	// Drag state
 	const drag_state = useRef<{
@@ -151,6 +152,7 @@ export function Canvas() {
 			(!c.source.shape_id || !selected_ids.has(c.source.shape_id)) &&
 			(!c.target.shape_id || !selected_ids.has(c.target.shape_id))
 		));
+		set_freehand_paths(prev => prev.filter(p => !selected_ids.has(p.id)));
 		set_selected_ids(new Set());
 	}, [selected_ids, Push_Undo]);
 
@@ -334,7 +336,7 @@ export function Canvas() {
 				set_laser_trail([{ ...canvas_pt, timestamp: now }]);
 				// Start fade animation
 				const Fade = () => {
-					const cutoff = Date.now() - 1000;
+					const cutoff = Date.now() - 1500;
 					set_laser_trail(prev => {
 						const filtered = prev.filter(p => p.timestamp > cutoff);
 						if (filtered.length > 0) {
@@ -393,8 +395,8 @@ export function Canvas() {
 				let nx = origin.x + dx;
 				let ny = origin.y + dy;
 				if (should_snap) {
-					nx = Snap_To_Grid(nx);
-					ny = Snap_To_Grid(ny);
+					nx = Snap_To_Grid(nx, grid_size);
+					ny = Snap_To_Grid(ny, grid_size);
 				}
 				return { ...s, x: nx, y: ny };
 			}));
@@ -403,10 +405,10 @@ export function Canvas() {
 			let bounds = Normalise_Bounds(ds.start_canvas, canvas_pt);
 			if (should_snap) {
 				bounds = {
-					x: Snap_To_Grid(bounds.x),
-					y: Snap_To_Grid(bounds.y),
-					width: Snap_To_Grid(bounds.width),
-					height: Snap_To_Grid(bounds.height),
+					x: Snap_To_Grid(bounds.x, grid_size),
+					y: Snap_To_Grid(bounds.y, grid_size),
+					width: Snap_To_Grid(bounds.width, grid_size),
+					height: Snap_To_Grid(bounds.height, grid_size),
 				};
 			}
 			ds.creating_shape = {
@@ -454,10 +456,10 @@ export function Canvas() {
 			else if (handle === 7) { x += dx; width -= dx; }
 
 			if (snap_enabled && !e.altKey) {
-				x = Snap_To_Grid(x);
-				y = Snap_To_Grid(y);
-				width = Snap_To_Grid(width);
-				height = Snap_To_Grid(height);
+				x = Snap_To_Grid(x, grid_size);
+				y = Snap_To_Grid(y, grid_size);
+				width = Snap_To_Grid(width, grid_size);
+				height = Snap_To_Grid(height, grid_size);
 			}
 
 			// Enforce minimum size
@@ -492,7 +494,7 @@ export function Canvas() {
 		} else if (ds.type === 'laser' && ds.laser_points) {
 			const now = Date.now();
 			ds.laser_points.push({ ...canvas_pt, timestamp: now });
-			set_laser_trail(prev => [...prev.filter(p => p.timestamp > now - 1000), { ...canvas_pt, timestamp: now }]);
+			set_laser_trail(prev => [...prev.filter(p => p.timestamp > now - 1500), { ...canvas_pt, timestamp: now }]);
 		}
 	}, [viewport, shapes, Get_SVG_Point]);
 
@@ -819,6 +821,21 @@ export function Canvas() {
 		}
 	}, []);
 
+	// Freehand path click handler
+	const Handle_Freehand_PointerDown = useCallback((e: React.PointerEvent, path_id: string) => {
+		e.stopPropagation();
+		if (e.shiftKey) {
+			set_selected_ids(prev => {
+				const next = new Set(prev);
+				if (next.has(path_id)) next.delete(path_id);
+				else next.add(path_id);
+				return next;
+			});
+		} else {
+			set_selected_ids(new Set([path_id]));
+		}
+	}, []);
+
 	// The editing shape (for text input overlay)
 	const editing_shape = editing_shape_id ? shapes.find(s => s.id === editing_shape_id) : null;
 
@@ -866,6 +883,8 @@ export function Canvas() {
 				on_duplicate={Duplicate_Selected}
 				snap_enabled={snap_enabled}
 				on_toggle_snap={() => set_snap_enabled(prev => !prev)}
+				grid_size={grid_size}
+				on_grid_size_change={set_grid_size}
 				can_undo={undo_mgr.Can_Undo}
 				can_redo={undo_mgr.Can_Redo}
 				has_selection={selected_ids.size > 0}
@@ -896,33 +915,38 @@ export function Canvas() {
 				onContextMenu={Handle_ContextMenu}
 			>
 				{/* Grid patterns — minor lines and major lines */}
-				<defs>
-					<pattern id="grid-minor"
-						width={GRID_SIZE * viewport.zoom}
-						height={GRID_SIZE * viewport.zoom}
-						patternUnits="userSpaceOnUse"
-						x={viewport.offset_x % (GRID_SIZE * viewport.zoom)}
-						y={viewport.offset_y % (GRID_SIZE * viewport.zoom)}
-					>
-						<path
-							d={`M ${GRID_SIZE * viewport.zoom} 0 L 0 0 0 ${GRID_SIZE * viewport.zoom}`}
-							fill="none" stroke="#e8e8e8" strokeWidth={0.5}
-						/>
-					</pattern>
-					<pattern id="grid-major"
-						width={GRID_MAJOR * viewport.zoom}
-						height={GRID_MAJOR * viewport.zoom}
-						patternUnits="userSpaceOnUse"
-						x={viewport.offset_x % (GRID_MAJOR * viewport.zoom)}
-						y={viewport.offset_y % (GRID_MAJOR * viewport.zoom)}
-					>
-						<rect width="100%" height="100%" fill="url(#grid-minor)" />
-						<path
-							d={`M ${GRID_MAJOR * viewport.zoom} 0 L 0 0 0 ${GRID_MAJOR * viewport.zoom}`}
-							fill="none" stroke="#d0d0d0" strokeWidth={1}
-						/>
-					</pattern>
-				</defs>
+				{(() => {
+					const major = grid_size * DEFAULT_GRID_MAJOR_MULT;
+					return (
+						<defs>
+							<pattern id="grid-minor"
+								width={grid_size * viewport.zoom}
+								height={grid_size * viewport.zoom}
+								patternUnits="userSpaceOnUse"
+								x={viewport.offset_x % (grid_size * viewport.zoom)}
+								y={viewport.offset_y % (grid_size * viewport.zoom)}
+							>
+								<path
+									d={`M ${grid_size * viewport.zoom} 0 L 0 0 0 ${grid_size * viewport.zoom}`}
+									fill="none" stroke="#e8e8e8" strokeWidth={0.5}
+								/>
+							</pattern>
+							<pattern id="grid-major"
+								width={major * viewport.zoom}
+								height={major * viewport.zoom}
+								patternUnits="userSpaceOnUse"
+								x={viewport.offset_x % (major * viewport.zoom)}
+								y={viewport.offset_y % (major * viewport.zoom)}
+							>
+								<rect width="100%" height="100%" fill="url(#grid-minor)" />
+								<path
+									d={`M ${major * viewport.zoom} 0 L 0 0 0 ${major * viewport.zoom}`}
+									fill="none" stroke="#d0d0d0" strokeWidth={1}
+								/>
+							</pattern>
+						</defs>
+					);
+				})()}
 				<rect width="100%" height="100%" fill="url(#grid-major)" pointerEvents="none" />
 
 				{/* Transformed canvas content */}
@@ -965,40 +989,71 @@ export function Canvas() {
 					)}
 
 					{/* Freehand paths */}
-					{freehand_paths.map(path => (
-						<polyline
-							key={path.id}
-							points={path.points.map(p => `${p.x},${p.y}`).join(' ')}
-							fill="none"
-							stroke={path.style.stroke}
-							strokeWidth={path.style.stroke_width}
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							pointerEvents="none"
-						/>
-					))}
-
-					{/* Laser pointer trail */}
-					{laser_trail.length > 1 && (() => {
-						const now = Date.now();
-						return laser_trail.map((pt, i) => {
-							if (i === 0) return null;
-							const prev = laser_trail[i - 1];
-							const age = (now - pt.timestamp) / 1000;
-							const opacity = Math.max(0, 1 - age);
-							return (
-								<line
-									key={i}
-									x1={prev.x} y1={prev.y}
-									x2={pt.x} y2={pt.y}
-									stroke="red"
-									strokeWidth={3}
+					{freehand_paths.map(path => {
+						const is_sel = selected_ids.has(path.id);
+						const pts = path.points.map(p => `${p.x},${p.y}`).join(' ');
+						return (
+							<g key={path.id} onPointerDown={(e) => Handle_Freehand_PointerDown(e, path.id)}>
+								{/* Fat invisible hit area */}
+								<polyline
+									points={pts}
+									fill="none" stroke="transparent" strokeWidth={12}
+									style={{ cursor: 'pointer' }}
+								/>
+								{/* Selection highlight */}
+								{is_sel && (
+									<polyline
+										points={pts}
+										fill="none" stroke="#00d4ff" strokeWidth={path.style.stroke_width + 4}
+										strokeLinecap="round" strokeLinejoin="round"
+										pointerEvents="none" opacity={0.4}
+									/>
+								)}
+								{/* Visible stroke */}
+								<polyline
+									points={pts}
+									fill="none"
+									stroke={path.style.stroke}
+									strokeWidth={path.style.stroke_width}
 									strokeLinecap="round"
-									opacity={opacity}
+									strokeLinejoin="round"
 									pointerEvents="none"
 								/>
-							);
-						});
+							</g>
+						);
+					})}
+
+					{/* Laser pointer trail */}
+					{laser_trail.length > 0 && (() => {
+						const now = Date.now();
+						const last = laser_trail[laser_trail.length - 1];
+						return (
+							<>
+								{/* Trail segments with fade */}
+								{laser_trail.map((pt, i) => {
+									if (i === 0) return null;
+									const prev = laser_trail[i - 1];
+									const age = (now - pt.timestamp) / 1500;
+									const opacity = Math.max(0, 1 - age);
+									return (
+										<line
+											key={i}
+											x1={prev.x} y1={prev.y}
+											x2={pt.x} y2={pt.y}
+											stroke="#ff2222"
+											strokeWidth={4}
+											strokeLinecap="round"
+											opacity={opacity}
+											pointerEvents="none"
+										/>
+									);
+								})}
+								{/* Glowing dot at current position */}
+								<circle cx={last.x} cy={last.y} r={8} fill="rgba(255,0,0,0.15)" pointerEvents="none" />
+								<circle cx={last.x} cy={last.y} r={5} fill="rgba(255,0,0,0.3)" pointerEvents="none" />
+								<circle cx={last.x} cy={last.y} r={3} fill="#ff2222" pointerEvents="none" />
+							</>
+						);
 					})()}
 				</g>
 
