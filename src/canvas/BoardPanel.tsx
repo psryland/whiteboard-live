@@ -234,15 +234,18 @@ export function BoardPanel({
 					<h3 style={heading_style}>Boards</h3>
 
 					{/* Save buttons */}
-					<div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-						<button onClick={Handle_Save} style={action_btn_style} title="Save current board">
-							💾 Save
+					<div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+						<button onClick={Handle_Save} style={icon_btn_style} title="Save current board">
+							<span style={{ fontSize: 20 }}>💾</span>
+							<span style={{ fontSize: 10, fontWeight: 500 }}>Save</span>
 						</button>
-						<button onClick={Handle_Save_As} style={action_btn_style} title="Save as new board">
-							📄 Save As
+						<button onClick={Handle_Save_As} style={icon_btn_style} title="Save as new board">
+							<span style={{ fontSize: 20 }}>📄</span>
+							<span style={{ fontSize: 10, fontWeight: 500 }}>Save As</span>
 						</button>
-						<button onClick={on_clear_canvas} style={{ ...action_btn_style, color: '#d32f2f' }} title="Clear canvas">
-							🗑 Clear
+						<button onClick={on_clear_canvas} style={{ ...icon_btn_style, color: '#d32f2f' }} title="Clear canvas">
+							<span style={{ fontSize: 20 }}>🗑️</span>
+							<span style={{ fontSize: 10, fontWeight: 500 }}>Clear</span>
 						</button>
 					</div>
 
@@ -402,6 +405,21 @@ const action_btn_style: React.CSSProperties = {
 	cursor: 'pointer',
 	fontFamily: 'inherit',
 	textAlign: 'left',
+};
+
+const icon_btn_style: React.CSSProperties = {
+	flex: 1,
+	display: 'flex',
+	flexDirection: 'column',
+	alignItems: 'center',
+	gap: 2,
+	padding: '8px 4px',
+	background: '#f8f9fa',
+	border: '1px solid #e0e0e0',
+	borderRadius: 8,
+	cursor: 'pointer',
+	fontFamily: 'inherit',
+	transition: 'background 0.12s, border-color 0.12s',
 };
 
 const board_item_style: React.CSSProperties = {

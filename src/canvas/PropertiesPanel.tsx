@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import type { Shape, ShapeStyle } from './types';
+import type { Shape, ShapeStyle, Connector, ArrowType, ConnectorRouting } from './types';
 
 interface PropertiesPanelProps {
 	selected_shapes: Shape[];
+	selected_connectors: Connector[];
 	on_style_change: (changes: Partial<ShapeStyle>) => void;
 	on_position_change: (changes: { x?: number; y?: number; width?: number; height?: number; rotation?: number }) => void;
 	on_text_change: (text: string) => void;
 	on_rounded_change: (rounded: boolean) => void;
 	on_z_order: (action: 'bring_front' | 'send_back' | 'bring_forward' | 'send_backward') => void;
+	on_connector_change: (changes: Partial<Pick<Connector, 'arrow_type' | 'routing'> & { stroke: string; stroke_width: number }>) => void;
 }
 
 const QUICK_COLOURS = [
@@ -17,13 +19,30 @@ const QUICK_COLOURS = [
 
 export function PropertiesPanel({
 	selected_shapes,
+	selected_connectors,
 	on_style_change,
 	on_position_change,
 	on_text_change,
 	on_rounded_change,
 	on_z_order,
+	on_connector_change,
 }: PropertiesPanelProps) {
 	const [active_tab, set_active_tab] = useState<'style' | 'text' | 'arrange'>('style');
+
+	// Show connector panel if connectors are selected and no shapes
+	if (selected_connectors.length > 0 && selected_shapes.length === 0) {
+		return (
+			<div style={panel_style} onPointerDown={e => e.stopPropagation()}>
+				<div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
+					<ConnectorTab
+						connector={selected_connectors[0]}
+						on_connector_change={on_connector_change}
+						on_z_order={on_z_order}
+					/>
+				</div>
+			</div>
+		);
+	}
 
 	if (selected_shapes.length === 0) {
 		return (
@@ -317,6 +336,128 @@ function ArrangeTab({ shape, on_position_change, on_z_order }: {
 
 			<div style={{ marginTop: 12, fontSize: 12, color: '#666' }}>
 				<strong>Type:</strong> {shape.type}
+			</div>
+		</>
+	);
+}
+
+const CONNECTOR_COLOURS = [
+	'#333333', '#666666', '#999999',
+	'#2196F3', '#1565C0', '#0D47A1',
+	'#4CAF50', '#2E7D32', '#1B5E20',
+	'#FF9800', '#E65100', '#BF360C',
+	'#F44336', '#C62828', '#880E4F',
+	'#9C27B0', '#4A148C', '#311B92',
+];
+
+function ConnectorTab({ connector, on_connector_change, on_z_order }: {
+	connector: Connector;
+	on_connector_change: (changes: Partial<Pick<Connector, 'arrow_type' | 'routing'> & { stroke: string; stroke_width: number }>) => void;
+	on_z_order: (action: 'bring_front' | 'send_back' | 'bring_forward' | 'send_backward') => void;
+}) {
+	const arrow_options: { value: ArrowType; label: string }[] = [
+		{ value: 'forward', label: '→ Forward' },
+		{ value: 'back', label: '← Back' },
+		{ value: 'both', label: '↔ Both' },
+	];
+	const routing_options: { value: ConnectorRouting; label: string }[] = [
+		{ value: 'ortho', label: '⊾ Orthogonal' },
+		{ value: 'smooth', label: '∿ Smooth' },
+		{ value: 'straight', label: '╲ Straight' },
+	];
+
+	return (
+		<>
+			<div style={{ fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+				Connector
+			</div>
+
+			{/* Colour */}
+			<div style={{ marginBottom: 10 }}>
+				<label style={label_style}>Colour</label>
+				<div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 3 }}>
+					{CONNECTOR_COLOURS.map(c => (
+						<div
+							key={c}
+							onClick={() => on_connector_change({ stroke: c })}
+							style={{
+								width: 24, height: 24, borderRadius: 4,
+								background: c, cursor: 'pointer',
+								border: connector.style.stroke === c ? '2px solid #2196F3' : '1px solid #ddd',
+								boxSizing: 'border-box',
+							}}
+						/>
+					))}
+				</div>
+			</div>
+
+			{/* Thickness */}
+			<div style={{ ...row_style, marginBottom: 10 }}>
+				<label style={label_style}>Thickness</label>
+				<input
+					type="range"
+					min={1}
+					max={8}
+					value={connector.style.stroke_width}
+					onChange={e => on_connector_change({ stroke_width: parseInt(e.target.value) })}
+					style={{ flex: 1 }}
+				/>
+				<span style={{ fontSize: 11, color: '#999', minWidth: 24 }}>{connector.style.stroke_width}px</span>
+			</div>
+
+			{/* Arrow type */}
+			<div style={{ marginBottom: 10 }}>
+				<label style={label_style}>Arrows</label>
+				<div style={{ display: 'flex', gap: 4 }}>
+					{arrow_options.map(opt => (
+						<button
+							key={opt.value}
+							onClick={() => on_connector_change({ arrow_type: opt.value })}
+							style={{
+								...z_btn_style,
+								flex: 1,
+								background: connector.arrow_type === opt.value ? '#e3f2fd' : '#f5f5f5',
+								border: connector.arrow_type === opt.value ? '1px solid #90caf9' : '1px solid #e0e0e0',
+								fontWeight: connector.arrow_type === opt.value ? 600 : 400,
+							}}
+						>
+							{opt.label}
+						</button>
+					))}
+				</div>
+			</div>
+
+			{/* Routing */}
+			<div style={{ marginBottom: 10 }}>
+				<label style={label_style}>Routing</label>
+				<div style={{ display: 'flex', gap: 4 }}>
+					{routing_options.map(opt => (
+						<button
+							key={opt.value}
+							onClick={() => on_connector_change({ routing: opt.value })}
+							style={{
+								...z_btn_style,
+								flex: 1,
+								background: connector.routing === opt.value ? '#e3f2fd' : '#f5f5f5',
+								border: connector.routing === opt.value ? '1px solid #90caf9' : '1px solid #e0e0e0',
+								fontWeight: connector.routing === opt.value ? 600 : 400,
+							}}
+						>
+							{opt.label}
+						</button>
+					))}
+				</div>
+			</div>
+
+			{/* Z-order */}
+			<div style={{ borderTop: '1px solid #e0e0e0', marginTop: 8, paddingTop: 8 }}>
+				<label style={{ ...label_style, marginBottom: 6, display: 'block' }}>Order</label>
+				<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+					<button onClick={() => on_z_order('bring_front')} style={z_btn_style}>⬆⬆ Front</button>
+					<button onClick={() => on_z_order('send_back')} style={z_btn_style}>⬇⬇ Back</button>
+					<button onClick={() => on_z_order('bring_forward')} style={z_btn_style}>⬆ Forward</button>
+					<button onClick={() => on_z_order('send_backward')} style={z_btn_style}>⬇ Backward</button>
+				</div>
 			</div>
 		</>
 	);

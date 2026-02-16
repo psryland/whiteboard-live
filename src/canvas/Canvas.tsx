@@ -1098,6 +1098,7 @@ export function Canvas() {
 	const editing_shape = editing_shape_id ? shapes.find(s => s.id === editing_shape_id) : null;
 
 	const selected_shapes = shapes.filter(s => selected_ids.has(s.id));
+	const selected_connectors = connectors.filter(c => selected_ids.has(c.id));
 
 	// Properties panel handlers
 	const Handle_Position_Change = useCallback((changes: { x?: number; y?: number; width?: number; height?: number; rotation?: number }) => {
@@ -1128,7 +1129,29 @@ export function Canvas() {
 		));
 	}, [selected_ids, Push_Undo]);
 
-	const Handle_Z_Order = useCallback((action: 'bring_front' | 'send_back' | 'bring_forward' | 'send_backward') => {
+	const Handle_Connector_Change = useCallback((changes: Partial<{ arrow_type: import('./types').ArrowType; routing: import('./types').ConnectorRouting; stroke: string; stroke_width: number }>) => {
+		Push_Undo();
+		set_connectors(prev => prev.map(c => {
+			if (!selected_ids.has(c.id)) return c;
+			const updated = { ...c };
+			if (changes.arrow_type !== undefined) updated.arrow_type = changes.arrow_type;
+			if (changes.routing !== undefined) {
+				updated.routing = changes.routing;
+				// Clear control points when switching routing so defaults are recalculated
+				updated.control_points = undefined;
+			}
+			if (changes.stroke !== undefined || changes.stroke_width !== undefined) {
+				updated.style = {
+					...updated.style,
+					...(changes.stroke !== undefined && { stroke: changes.stroke }),
+					...(changes.stroke_width !== undefined && { stroke_width: changes.stroke_width }),
+				};
+			}
+			return updated;
+		}));
+	}, [selected_ids, Push_Undo]);
+
+	const Handle_Z_Order= useCallback((action: 'bring_front' | 'send_back' | 'bring_forward' | 'send_backward') => {
 		Push_Undo();
 
 		// Collect all z_index values across all element types
@@ -1451,11 +1474,13 @@ export function Canvas() {
 			{/* Properties panel */}
 			<PropertiesPanel
 				selected_shapes={selected_shapes}
+				selected_connectors={selected_connectors}
 				on_style_change={Apply_Style_Change}
 				on_position_change={Handle_Position_Change}
 				on_text_change={Handle_Panel_Text_Change}
 				on_rounded_change={Handle_Rounded_Change}
 				on_z_order={Handle_Z_Order}
+				on_connector_change={Handle_Connector_Change}
 			/>
 		</div>
 	);
