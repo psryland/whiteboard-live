@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle, FreehandPath, LaserPoint } from './types';
 import { DEFAULT_STYLE } from './types';
-import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, DEFAULT_GRID_SIZE, DEFAULT_GRID_MAJOR_MULT } from './helpers';
+import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, DEFAULT_GRID_SIZE, DEFAULT_GRID_MAJOR_MULT, Freehand_Bounds, Simplify_Points, Smooth_Points, Get_Svg_Path_From_Stroke } from './helpers';
+import { getStroke } from 'perfect-freehand';
 import { UndoManager } from './undo';
 import { ShapeRenderer } from './ShapeRenderer';
 import { ConnectorRenderer } from './ConnectorRenderer';
@@ -54,7 +55,7 @@ export function Canvas() {
 
 	// Drag state
 	const drag_state = useRef<{
-		type: 'none' | 'pan' | 'move' | 'create' | 'marquee' | 'connector' | 'resize' | 'rotate' | 'freehand' | 'laser';
+		type: 'none' | 'pan' | 'move' | 'create' | 'marquee' | 'connector' | 'resize' | 'rotate' | 'freehand' | 'laser' | 'freehand_move' | 'freehand_resize';
 		start_canvas: Point;
 		start_screen: Point;
 		start_viewport?: Viewport;
@@ -75,6 +76,10 @@ export function Canvas() {
 		freehand_points?: Point[];
 		// Laser state
 		laser_points?: LaserPoint[];
+		// Freehand move/resize state
+		freehand_path_origins?: Map<string, Point[]>;
+		freehand_resize_bounds?: { x: number; y: number; width: number; height: number };
+		freehand_resize_handle?: number;
 	}>({ type: 'none', start_canvas: { x: 0, y: 0 }, start_screen: { x: 0, y: 0 } });
 
 	// Marquee rectangle (screen coords for overlay display)
@@ -491,6 +496,45 @@ export function Canvas() {
 				const without = prev.filter(p => p.id !== '__drawing__');
 				return [...without, { id: '__drawing__', points: [...ds.freehand_points!], style: { stroke: '#333333', stroke_width: 2 } }];
 			});
+		} else if (ds.type === 'freehand_move' && ds.freehand_path_origins) {
+			ds.moved = true;
+			const dx = canvas_pt.x - ds.start_canvas.x;
+			const dy = canvas_pt.y - ds.start_canvas.y;
+			set_freehand_paths(prev => prev.map(p => {
+				const orig = ds.freehand_path_origins!.get(p.id);
+				if (!orig) return p;
+				return { ...p, points: orig.map(pt => ({ x: pt.x + dx, y: pt.y + dy })) };
+			}));
+		} else if (ds.type === 'freehand_resize' && ds.freehand_path_origins && ds.freehand_resize_bounds) {
+			const orig_bounds = ds.freehand_resize_bounds;
+			const handle = ds.freehand_resize_handle ?? 2;
+			const dx = canvas_pt.x - ds.start_canvas.x;
+			const dy = canvas_pt.y - ds.start_canvas.y;
+
+			// Calculate new bounds based on handle being dragged
+			let new_x = orig_bounds.x, new_y = orig_bounds.y;
+			let new_w = orig_bounds.width, new_h = orig_bounds.height;
+			if (handle === 0) { new_x += dx; new_y += dy; new_w -= dx; new_h -= dy; }
+			else if (handle === 1) { new_y += dy; new_w += dx; new_h -= dy; }
+			else if (handle === 2) { new_w += dx; new_h += dy; }
+			else if (handle === 3) { new_x += dx; new_w -= dx; new_h += dy; }
+			if (new_w < 5) new_w = 5;
+			if (new_h < 5) new_h = 5;
+
+			// Scale all points from original bounds to new bounds
+			const ow = orig_bounds.width || 1;
+			const oh = orig_bounds.height || 1;
+			set_freehand_paths(prev => prev.map(p => {
+				const orig = ds.freehand_path_origins!.get(p.id);
+				if (!orig) return p;
+				return {
+					...p,
+					points: orig.map(pt => ({
+						x: new_x + ((pt.x - orig_bounds.x) / ow) * new_w,
+						y: new_y + ((pt.y - orig_bounds.y) / oh) * new_h,
+					})),
+				};
+			}));
 		} else if (ds.type === 'laser' && ds.laser_points) {
 			const now = Date.now();
 			ds.laser_points.push({ ...canvas_pt, timestamp: now });
@@ -523,6 +567,12 @@ export function Canvas() {
 			for (const shape of shapes) {
 				if (Bounds_Overlap(sel_bounds, Shape_Bounds(shape))) {
 					ids.add(shape.id);
+				}
+			}
+			// Also select freehand paths whose bounding box overlaps
+			for (const fp of freehand_paths) {
+				if (Bounds_Overlap(sel_bounds, Freehand_Bounds(fp.points))) {
+					ids.add(fp.id);
 				}
 			}
 			set_selected_ids(ids);
@@ -558,17 +608,23 @@ export function Canvas() {
 		} else if (ds.type === 'rotate') {
 			// Rotate complete
 		} else if (ds.type === 'freehand' && ds.freehand_points) {
-			// Finalize freehand path
+			// Finalize freehand path — simplify then smooth for natural-looking curves
 			if (ds.freehand_points.length > 1) {
+				const simplified = Simplify_Points(ds.freehand_points, 2);
+				const smoothed = Smooth_Points(simplified, 2);
 				const path: FreehandPath = {
 					id: Generate_Id('f'),
-					points: ds.freehand_points,
+					points: smoothed,
 					style: { stroke: '#333333', stroke_width: 2 },
 				};
 				set_freehand_paths(prev => [...prev.filter(p => p.id !== '__drawing__'), path]);
 			} else {
 				set_freehand_paths(prev => prev.filter(p => p.id !== '__drawing__'));
 			}
+		} else if (ds.type === 'freehand_move') {
+			// Move complete
+		} else if (ds.type === 'freehand_resize') {
+			// Resize complete
 		} else if (ds.type === 'laser') {
 			// Laser trail fades on its own via animation
 		}
@@ -824,6 +880,29 @@ export function Canvas() {
 	// Freehand path click handler
 	const Handle_Freehand_PointerDown = useCallback((e: React.PointerEvent, path_id: string) => {
 		e.stopPropagation();
+		const screen_pt = Get_SVG_Point(e);
+		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
+
+		// Check if clicking on a resize handle of an already-selected freehand path
+		const target = e.target as Element;
+		const handle_index = target.getAttribute('data-freehand-handle');
+		if (handle_index !== null && selected_ids.has(path_id)) {
+			const path = freehand_paths.find(p => p.id === path_id);
+			if (path) {
+				const bounds = Freehand_Bounds(path.points);
+				Push_Undo();
+				drag_state.current = {
+					type: 'freehand_resize',
+					start_canvas: canvas_pt,
+					start_screen: screen_pt,
+					freehand_path_origins: new Map([[path_id, path.points.map(p => ({ ...p }))]]),
+					freehand_resize_bounds: { ...bounds },
+					freehand_resize_handle: parseInt(handle_index),
+				};
+				return;
+			}
+		}
+
 		if (e.shiftKey) {
 			set_selected_ids(prev => {
 				const next = new Set(prev);
@@ -832,9 +911,28 @@ export function Canvas() {
 				return next;
 			});
 		} else {
-			set_selected_ids(new Set([path_id]));
+			if (!selected_ids.has(path_id)) {
+				set_selected_ids(new Set([path_id]));
+			}
 		}
-	}, []);
+
+		// Start dragging to move selected freehand paths
+		const ids = selected_ids.has(path_id) ? selected_ids : new Set([path_id]);
+		const origins = new Map<string, Point[]>();
+		for (const p of freehand_paths) {
+			if (ids.has(p.id)) {
+				origins.set(p.id, p.points.map(pt => ({ ...pt })));
+			}
+		}
+		Push_Undo();
+		drag_state.current = {
+			type: 'freehand_move',
+			start_canvas: canvas_pt,
+			start_screen: screen_pt,
+			freehand_path_origins: origins,
+			moved: false,
+		};
+	}, [viewport, selected_ids, freehand_paths, Push_Undo, Get_SVG_Point]);
 
 	// The editing shape (for text input overlay)
 	const editing_shape = editing_shape_id ? shapes.find(s => s.id === editing_shape_id) : null;
@@ -991,32 +1089,64 @@ export function Canvas() {
 					{/* Freehand paths */}
 					{freehand_paths.map(path => {
 						const is_sel = selected_ids.has(path.id);
-						const pts = path.points.map(p => `${p.x},${p.y}`).join(' ');
+						const is_drawing = path.id === '__drawing__';
+
+						// Generate the pressure-sensitive stroke outline
+						const stroke_points = getStroke(path.points, {
+							size: path.style.stroke_width * 4,
+							thinning: 0.5,
+							smoothing: 0.5,
+							streamline: 0.5,
+							simulatePressure: true,
+							start: { cap: true, taper: 0 },
+							end: { cap: true, taper: is_drawing ? 0 : 20 },
+							last: !is_drawing,
+						});
+						const path_d = Get_Svg_Path_From_Stroke(stroke_points);
+						const bounds = is_sel ? Freehand_Bounds(path.points) : null;
+
+						// Also create a simple polyline for the hit area
+						const pts_str = path.points.map(p => `${p.x},${p.y}`).join(' ');
+
 						return (
 							<g key={path.id} onPointerDown={(e) => Handle_Freehand_PointerDown(e, path.id)}>
 								{/* Fat invisible hit area */}
 								<polyline
-									points={pts}
-									fill="none" stroke="transparent" strokeWidth={12}
+									points={pts_str}
+									fill="none" stroke="transparent" strokeWidth={16}
 									style={{ cursor: 'pointer' }}
 								/>
-								{/* Selection highlight */}
-								{is_sel && (
-									<polyline
-										points={pts}
-										fill="none" stroke="#00d4ff" strokeWidth={path.style.stroke_width + 4}
-										strokeLinecap="round" strokeLinejoin="round"
-										pointerEvents="none" opacity={0.4}
-									/>
+								{/* Selection bounding box + handles */}
+								{is_sel && bounds && bounds.width > 0 && bounds.height > 0 && (
+									<>
+										<rect
+											x={bounds.x - 4} y={bounds.y - 4}
+											width={bounds.width + 8} height={bounds.height + 8}
+											fill="none" stroke="#00d4ff" strokeWidth={1}
+											strokeDasharray="4 2" pointerEvents="none" opacity={0.6}
+										/>
+										{/* Corner resize handles */}
+										{[
+											{ hx: bounds.x - 4, hy: bounds.y - 4, idx: 0, cursor: 'nwse-resize' },
+											{ hx: bounds.x + bounds.width + 4, hy: bounds.y - 4, idx: 1, cursor: 'nesw-resize' },
+											{ hx: bounds.x + bounds.width + 4, hy: bounds.y + bounds.height + 4, idx: 2, cursor: 'nwse-resize' },
+											{ hx: bounds.x - 4, hy: bounds.y + bounds.height + 4, idx: 3, cursor: 'nesw-resize' },
+										].map(h => (
+											<circle
+												key={h.idx}
+												cx={h.hx} cy={h.hy} r={4}
+												fill="#fff" stroke="#00d4ff" strokeWidth={1.5}
+												style={{ cursor: h.cursor }}
+												data-freehand-handle={h.idx}
+											/>
+										))}
+									</>
 								)}
-								{/* Visible stroke */}
-								<polyline
-									points={pts}
-									fill="none"
-									stroke={path.style.stroke}
-									strokeWidth={path.style.stroke_width}
-									strokeLinecap="round"
-									strokeLinejoin="round"
+								{/* Pressure-sensitive filled stroke */}
+								<path
+									d={path_d}
+									fill={path.style.stroke}
+									stroke="none"
 									pointerEvents="none"
 								/>
 							</g>

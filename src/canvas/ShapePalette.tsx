@@ -104,6 +104,7 @@ const panel_style: React.CSSProperties = {
 	overflowY: 'auto',
 	zIndex: 90,
 	boxShadow: '2px 0 8px rgba(0,0,0,0.08)',
+	fontFamily: 'inherit',
 };
 
 const shape_btn_style: React.CSSProperties = {
@@ -117,4 +118,5 @@ const shape_btn_style: React.CSSProperties = {
 	borderRadius: 6,
 	cursor: 'pointer',
 	transition: 'background 0.1s',
+	fontFamily: 'inherit',
 };

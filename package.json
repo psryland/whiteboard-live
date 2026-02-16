@@ -13,6 +13,7 @@
 	"dependencies": {
 		"@fluentui/react-components": "^9.56.0",
 		"@microsoft/teams-js": "^2.31.0",
+		"perfect-freehand": "^1.2.3",
 		"react": "^18.3.1",
 		"react-dom": "^18.3.1"
 	},

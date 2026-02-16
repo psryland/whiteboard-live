@@ -133,6 +133,7 @@ const toolbar_style: React.CSSProperties = {
 	boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
 	zIndex: 100,
 	alignItems: 'center',
+	fontFamily: 'inherit',
 };
 
 const btn_style: React.CSSProperties = {
@@ -146,6 +147,7 @@ const btn_style: React.CSSProperties = {
 	alignItems: 'center',
 	justifyContent: 'center',
 	transition: 'background 0.1s',
+	fontFamily: 'inherit',
 };
 
 const separator_style: React.CSSProperties = {

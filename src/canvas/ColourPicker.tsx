@@ -122,6 +122,7 @@ const panel_style: React.CSSProperties = {
 	padding: 12,
 	zIndex: 150,
 	minWidth: 250,
+	fontFamily: 'inherit',
 };
 
 const tab_style: React.CSSProperties = {
@@ -131,5 +132,6 @@ const tab_style: React.CSSProperties = {
 	borderRadius: 4,
 	cursor: 'pointer',
 	fontSize: 12,
-	fontWeight: 600,
+	fontWeight: 500,
+	fontFamily: 'inherit',
 };

@@ -140,3 +140,63 @@ export const DEFAULT_GRID_MAJOR_MULT = 10; // major lines every N minor lines
 export function Snap_To_Grid(value: number, grid_size: number = DEFAULT_GRID_SIZE): number {
 	return Math.round(value / grid_size) * grid_size;
 }
+
+// Compute axis-aligned bounding box of a set of points
+export function Freehand_Bounds(points: Point[]): Bounds {
+	if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+	let min_x = Infinity, min_y = Infinity, max_x = -Infinity, max_y = -Infinity;
+	for (const p of points) {
+		if (p.x < min_x) min_x = p.x;
+		if (p.y < min_y) min_y = p.y;
+		if (p.x > max_x) max_x = p.x;
+		if (p.y > max_y) max_y = p.y;
+	}
+	return { x: min_x, y: min_y, width: max_x - min_x, height: max_y - min_y };
+}
+
+// Smooth a polyline using Chaikin's corner-cutting algorithm.
+// Each pass doubles the point count, producing progressively smoother curves.
+export function Smooth_Points(points: Point[], iterations: number = 2): Point[] {
+	if (points.length < 3) return points;
+	let result = points;
+	for (let iter = 0; iter < iterations; iter++) {
+		const smoothed: Point[] = [result[0]]; // keep first point
+		for (let i = 0; i < result.length - 1; i++) {
+			const p0 = result[i];
+			const p1 = result[i + 1];
+			smoothed.push({ x: 0.75 * p0.x + 0.25 * p1.x, y: 0.75 * p0.y + 0.25 * p1.y });
+			smoothed.push({ x: 0.25 * p0.x + 0.75 * p1.x, y: 0.25 * p0.y + 0.75 * p1.y });
+		}
+		smoothed.push(result[result.length - 1]); // keep last point
+		result = smoothed;
+	}
+	return result;
+}
+
+// Simplify a polyline by removing points that are closer than min_dist to each other (Radial Distance)
+export function Simplify_Points(points: Point[], min_dist: number = 3): Point[] {
+	if (points.length < 3) return points;
+	const result: Point[] = [points[0]];
+	for (let i = 1; i < points.length - 1; i++) {
+		const last = result[result.length - 1];
+		const d = Math.hypot(points[i].x - last.x, points[i].y - last.y);
+		if (d >= min_dist) result.push(points[i]);
+	}
+	result.push(points[points.length - 1]); // always keep last
+	return result;
+}
+
+// Convert perfect-freehand outline points to an SVG path d attribute
+export function Get_Svg_Path_From_Stroke(stroke: [number, number][]): string {
+	if (stroke.length === 0) return '';
+	const d = stroke.reduce(
+		(acc, [x0, y0], i, arr) => {
+			const [x1, y1] = arr[(i + 1) % arr.length];
+			acc.push(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
+			return acc;
+		},
+		['M', ...stroke[0], 'Q'] as (string | number)[]
+	);
+	d.push('Z');
+	return d.join(' ');
+}

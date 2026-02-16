@@ -318,7 +318,7 @@ const panel_style: React.CSSProperties = {
 	zIndex: 90,
 	boxShadow: '-2px 0 8px rgba(0,0,0,0.05)',
 	overflowY: 'auto',
-	fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+	fontFamily: 'inherit',
 };
 
 const row_style: React.CSSProperties = {
