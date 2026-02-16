@@ -657,17 +657,20 @@ export function BoardPanel({
 					{/* Account section — pinned to bottom */}
 					<div style={{ marginTop: 'auto' }}>
 						{graph_auth.is_signed_in ? (
-							<div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
-								<span style={{ color: '#4caf50' }}>●</span>
-								<span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#555' }}>
-									{graph_auth.user_name || 'Signed in'}
-								</span>
-								<button
-									onClick={() => graph_auth.Sign_Out()}
-									style={{ fontSize: 10, background: 'none', border: 'none', color: '#999', cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}
-								>
-									Sign out
-								</button>
+							<div style={{ fontSize: 11 }}>
+								<div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+									<span style={{ color: '#4caf50' }}>●</span>
+									<span style={{ fontWeight: 500, color: '#555' }}>Signed in as</span>
+									<button
+										onClick={() => graph_auth.Sign_Out()}
+										style={{ fontSize: 10, background: 'none', border: 'none', color: '#999', cursor: 'pointer', textDecoration: 'underline', marginLeft: 'auto', whiteSpace: 'nowrap' }}
+									>
+										Sign out
+									</button>
+								</div>
+								<div style={{ fontSize: 10, color: '#777', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: 14 }}>
+									{graph_auth.user_email || graph_auth.user_name || 'Unknown'}
+								</div>
 							</div>
 						) : (
 							<button

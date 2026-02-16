@@ -6,6 +6,7 @@ import { login_scopes } from './MsalConfig';
 export interface GraphAuth {
 	is_signed_in: boolean;
 	user_name: string | null;
+	user_email: string | null;
 	Sign_In: () => Promise<string | null>;
 	Sign_Out: () => Promise<void>;
 	Get_Token: () => Promise<string | null>;
@@ -64,5 +65,5 @@ export function useGraphToken(): GraphAuth {
 		}
 	}, [instance]);
 
-	return { is_signed_in, user_name, Sign_In, Sign_Out, Get_Token };
+	return { is_signed_in, user_name, user_email: accounts[0]?.username ?? null, Sign_In, Sign_Out, Get_Token };
 }
