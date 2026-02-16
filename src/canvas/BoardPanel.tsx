@@ -135,9 +135,7 @@ export function BoardPanel({
 	}
 
 	function Handle_Save_As_Click(): void {
-		const name = prompt('Board name:', current_board_name || `Board ${boards.length + 1}`);
-		if (!name) return;
-		set_pending_save_name(name);
+		set_pending_save_name(current_board_name || `Board ${boards.length + 1}`);
 	}
 
 	function Save_As_Local(name: string): void {
@@ -497,10 +495,10 @@ export function BoardPanel({
 					{/* Save location picker — appears when Save As is pending */}
 					{pending_save_name !== null && (
 						<div style={picker_style}>
-							<div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6 }}>
+							<div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8, color: '#333' }}>
 								Save "{pending_save_name}" to:
 							</div>
-							<div style={{ display: 'flex', gap: 6 }}>
+							<div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
 								<button
 									onClick={() => Save_As_Local(pending_save_name)}
 									style={picker_btn_style}
@@ -521,7 +519,12 @@ export function BoardPanel({
 								</button>
 								<button
 									onClick={() => set_pending_save_name(null)}
-									style={{ ...picker_btn_style, background: '#f5f5f5' }}
+									title="Cancel"
+									style={{
+										width: 28, height: 28, padding: 0, fontSize: 14, lineHeight: '28px',
+										background: '#f5f5f5', border: '1px solid #ddd', borderRadius: 6,
+										cursor: 'pointer', textAlign: 'center', flexShrink: 0, color: '#888',
+									}}
 								>
 									✕
 								</button>
@@ -581,7 +584,7 @@ export function BoardPanel({
 											{board.storage === 'cloud' ? '☁️ ' : '💻 '}{board.name}
 										</div>
 										<div style={{ fontSize: 10, color: '#999' }}>
-											{new Date(board.updated_at).toLocaleDateString()}
+											{new Date(board.updated_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
 										</div>
 									</div>
 								)}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle, FreehandPath, LaserPoint, ToolSettings, CollabUser } from './types';
 import { DEFAULT_STYLE, DEFAULT_TOOL_SETTINGS } from './types';
-import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Port_Outward_Normal, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, DEFAULT_GRID_SIZE, DEFAULT_GRID_MAJOR_MULT, Freehand_Bounds, Simplify_Points, Smooth_Points, Get_Svg_Path_From_Stroke, Default_Control_Points } from './helpers';
+import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Port_Outward_Normal, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, DEFAULT_GRID_SIZE, DEFAULT_GRID_MAJOR_MULT, Freehand_Bounds, Simplify_Points, Smooth_Points, Get_Svg_Path_From_Stroke, Default_Control_Points, Closest_T_On_Line, Point_At_T } from './helpers';
 import { getStroke } from 'perfect-freehand';
 import { UndoManager } from './undo';
 import { ShapeRenderer } from './ShapeRenderer';
@@ -108,7 +108,7 @@ export function Canvas() {
 
 	// Drag state
 	const drag_state = useRef<{
-		type: 'none' | 'pan' | 'move' | 'create' | 'marquee' | 'connector' | 'resize' | 'rotate' | 'freehand' | 'laser' | 'freehand_move' | 'freehand_resize' | 'cp_drag' | 'endpoint_drag';
+		type: 'none' | 'pan' | 'move' | 'create' | 'marquee' | 'connector' | 'resize' | 'rotate' | 'freehand' | 'laser' | 'freehand_move' | 'freehand_resize' | 'cp_drag' | 'endpoint_drag' | 'label_t_drag';
 		start_canvas: Point;
 		start_screen: Point;
 		start_viewport?: Viewport;
@@ -141,6 +141,8 @@ export function Canvas() {
 		endpoint_end?: 'source' | 'target';
 		endpoint_original?: Point; // original endpoint position when drag started
 		endpoint_original_cp?: Point; // original control point for the dragged end
+		// Label attachment point drag state
+		label_connector_id?: string;
 	}>({ type: 'none', start_canvas: { x: 0, y: 0 }, start_screen: { x: 0, y: 0 } });
 
 	// Marquee rectangle (screen coords for overlay display)
@@ -151,7 +153,9 @@ export function Canvas() {
 
 	// Text editing
 	const [editing_shape_id, set_editing_shape_id] = useState<string | null>(null);
+	const [editing_connector_id, set_editing_connector_id] = useState<string | null>(null);
 	const text_input_ref = useRef<HTMLInputElement>(null);
+	const connector_text_input_ref = useRef<HTMLInputElement>(null);
 	const editing_started_at = useRef<number>(0);
 
 	// Colour picker removed — colours now in toolbar dropdowns
@@ -373,6 +377,13 @@ export function Canvas() {
 		}
 	}, [editing_shape_id]);
 
+	useEffect(() => {
+		if (editing_connector_id && connector_text_input_ref.current) {
+			connector_text_input_ref.current.focus();
+			connector_text_input_ref.current.select();
+		}
+	}, [editing_connector_id]);
+
 	// Save undo snapshot before making a change
 	const Push_Undo = useCallback(() => {
 		undo_mgr.Push({ shapes, connectors, freehand_paths });
@@ -426,25 +437,33 @@ export function Canvas() {
 			id_map.set(s.id, new_id);
 			new_shapes.push({ ...s, id: new_id, x: s.x + 20, y: s.y + 20, ports: Default_Ports(), z_index: Next_Z() });
 		}
-		// Duplicate connectors between selected shapes
+		// Duplicate connectors — reconnect to duplicated shapes, or detach as free-floating
 		const new_connectors: Connector[] = [];
 		for (const c of connectors) {
 			if (!selected_ids.has(c.id)) continue;
 			const new_src_id = c.source.shape_id ? id_map.get(c.source.shape_id) : null;
 			const new_tgt_id = c.target.shape_id ? id_map.get(c.target.shape_id) : null;
-			if (new_src_id || new_tgt_id) {
-				new_connectors.push({
-					...c,
-					id: Generate_Id('c'),
-					source: { ...c.source, shape_id: new_src_id ?? c.source.shape_id },
-					target: { ...c.target, shape_id: new_tgt_id ?? c.target.shape_id },
-					z_index: Next_Z(),
-				});
-			}
+			const src_pt = Resolve_Connector_End(c.source, shapes);
+			const tgt_pt = Resolve_Connector_End(c.target, shapes);
+			const new_id = Generate_Id('c');
+			new_connectors.push({
+				...c,
+				id: new_id,
+				source: new_src_id
+					? { ...c.source, shape_id: new_src_id }
+					: { shape_id: null, port_id: null, x: src_pt.x + 20, y: src_pt.y + 20 },
+				target: new_tgt_id
+					? { ...c.target, shape_id: new_tgt_id }
+					: { shape_id: null, port_id: null, x: tgt_pt.x + 20, y: tgt_pt.y + 20 },
+				control_points: undefined,
+				z_index: Next_Z(),
+			});
+			id_map.set(c.id, new_id);
 		}
 		set_shapes(prev => [...prev, ...new_shapes]);
 		set_connectors(prev => [...prev, ...new_connectors]);
-		set_selected_ids(new Set(new_shapes.map(s => s.id)));
+		const new_ids = new Set([...new_shapes.map(s => s.id), ...new_connectors.map(c => c.id)]);
+		set_selected_ids(new_ids);
 	}, [selected_ids, shapes, connectors, Push_Undo]);
 
 	// Copy selected shapes to clipboard
@@ -899,6 +918,15 @@ export function Canvas() {
 				}
 				return { ...c, target: new_end, control_points: cp };
 			}));
+		} else if (ds.type === 'label_t_drag' && ds.label_connector_id) {
+			// Project cursor onto the connector path to find closest t value
+			set_connectors(prev => prev.map(c => {
+				if (c.id !== ds.label_connector_id) return c;
+				const src = Resolve_Connector_End(c.source, shapes);
+				const tgt = Resolve_Connector_End(c.target, shapes);
+				const t = Closest_T_On_Line(src, tgt, canvas_pt);
+				return { ...c, label_t: Math.max(0.05, Math.min(0.95, t)) };
+			}));
 		} else if (ds.type === 'laser' && ds.laser_points) {
 			const now = Date.now();
 			ds.laser_points.push({ ...canvas_pt, timestamp: now });
@@ -1059,6 +1087,9 @@ export function Canvas() {
 				Broadcast_Update('connector', updated);
 				return updated;
 			}));
+		} else if (ds.type === 'label_t_drag' && ds.label_connector_id) {
+			const c = connectors.find(cn => cn.id === ds.label_connector_id);
+			if (c) Broadcast_Update('connector', c);
 		} else if (ds.type === 'laser') {
 			// Laser trail fades on its own via animation
 		}
@@ -1216,6 +1247,33 @@ export function Canvas() {
 		set_editing_shape_id(null);
 	}, [editing_shape_id, shapes]);
 
+	const Handle_Connector_Label_Change = useCallback((value: string) => {
+		if (!editing_connector_id) return;
+		set_connectors(prev => prev.map(c =>
+			c.id === editing_connector_id
+				? { ...c, label: value, label_t: c.label_t ?? 0.5 }
+				: c
+		));
+	}, [editing_connector_id]);
+
+	const Handle_Connector_Label_Commit = useCallback(() => {
+		if (Date.now() - editing_started_at.current < 200) return;
+		if (editing_connector_id) {
+			const c = connectors.find(cn => cn.id === editing_connector_id);
+			if (c) {
+				// Empty label → remove it
+				const updated = c.label ? c : { ...c, label: undefined, label_t: undefined };
+				if (!c.label) {
+					set_connectors(prev => prev.map(cn =>
+						cn.id === editing_connector_id ? updated : cn
+					));
+				}
+				Broadcast_Update('connector', updated);
+			}
+		}
+		set_editing_connector_id(null);
+	}, [editing_connector_id, connectors]);
+
 	// ── Canvas double-click → create shape ──
 	const Handle_Canvas_DoubleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
 		if ((e.target as Element) !== svg_ref.current) return;
@@ -1272,6 +1330,12 @@ export function Canvas() {
 				}
 				return;
 			}
+			if (editing_connector_id) {
+				if (e.key === 'Escape' || e.key === 'Enter') {
+					Handle_Connector_Label_Commit();
+				}
+				return;
+			}
 
 			if (e.ctrlKey || e.metaKey) {
 				if (e.key === 'z') { e.preventDefault(); if (!remote_editing_blocked) Do_Undo(); }
@@ -1293,11 +1357,16 @@ export function Canvas() {
 					set_active_tool('select');
 					break;
 				case 'F2':
-					// Edit text of selected shape
+					// Edit text of selected shape or connector label
 					if (!remote_editing_blocked && selected_ids.size === 1) {
 						const id = Array.from(selected_ids)[0];
+						const is_connector = connectors.some(c => c.id === id);
 						editing_started_at.current = Date.now();
-						set_editing_shape_id(id);
+						if (is_connector) {
+							set_editing_connector_id(id);
+						} else {
+							set_editing_shape_id(id);
+						}
 					}
 					e.preventDefault();
 					break;
@@ -1313,7 +1382,7 @@ export function Canvas() {
 
 		window.addEventListener('keydown', On_KeyDown);
 		return () => window.removeEventListener('keydown', On_KeyDown);
-	}, [editing_shape_id, shapes, Do_Undo, Do_Redo, Delete_Selected, Copy_Selected, Paste, Duplicate_Selected, tool_settings.shape_type, remote_editing_blocked]);
+	}, [editing_shape_id, editing_connector_id, shapes, connectors, Do_Undo, Do_Redo, Delete_Selected, Copy_Selected, Paste, Duplicate_Selected, tool_settings.shape_type, remote_editing_blocked, Handle_Connector_Label_Commit]);
 
 	// Force tool back to select/laser when remote editing is blocked
 	useEffect(() => {
@@ -1410,6 +1479,18 @@ export function Canvas() {
 		set_connector_preview(null);
 	}, [viewport, connectors, shapes, Push_Undo, Get_SVG_Point]);
 
+	const Handle_Label_T_Drag = useCallback((connector_id: string, e: React.PointerEvent) => {
+		const screen_pt = Get_SVG_Point(e);
+		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
+		Push_Undo();
+		drag_state.current = {
+			type: 'label_t_drag',
+			start_canvas: canvas_pt,
+			start_screen: screen_pt,
+			label_connector_id: connector_id,
+		};
+	}, [viewport, Push_Undo, Get_SVG_Point]);
+
 	// Freehand path click handler
 	const Handle_Freehand_PointerDown = useCallback((e: React.PointerEvent, path_id: string) => {
 		// When drawing or using laser, let the event bubble up to the canvas handler
@@ -1473,6 +1554,7 @@ export function Canvas() {
 
 	// The editing shape (for text input overlay)
 	const editing_shape = editing_shape_id ? shapes.find(s => s.id === editing_shape_id) : null;
+	const editing_connector = editing_connector_id ? connectors.find(c => c.id === editing_connector_id) : null;
 
 	const selected_shapes = shapes.filter(s => selected_ids.has(s.id));
 	const selected_connectors = connectors.filter(c => selected_ids.has(c.id));
@@ -1618,6 +1700,7 @@ export function Canvas() {
 				on_undo={Do_Undo}
 				on_redo={Do_Redo}
 				on_delete={Delete_Selected}
+				on_duplicate={Duplicate_Selected}
 				can_undo={undo_mgr.Can_Undo}
 				can_redo={undo_mgr.Can_Redo}
 				has_selection={selected_ids.size > 0}
@@ -1709,6 +1792,7 @@ export function Canvas() {
 										on_pointer_down={Handle_Connector_PointerDown}
 										on_control_point_drag={Handle_Control_Point_Drag}
 										on_endpoint_drag={Handle_Endpoint_Drag}
+										on_label_t_drag={Handle_Label_T_Drag}
 									/>
 								);
 							}
@@ -1964,6 +2048,44 @@ export function Canvas() {
 					}}
 				/>
 			)}
+
+			{/* Connector label editing overlay */}
+			{editing_connector && (() => {
+				const src = Resolve_Connector_End(editing_connector.source, shapes);
+				const tgt = Resolve_Connector_End(editing_connector.target, shapes);
+				const t = editing_connector.label_t ?? 0.5;
+				const pt = Point_At_T(src, tgt, t);
+				const screen_x = pt.x * viewport.zoom + viewport.offset_x;
+				const screen_y = pt.y * viewport.zoom + viewport.offset_y;
+				return (
+					<input
+						ref={connector_text_input_ref}
+						type="text"
+						value={editing_connector.label ?? ''}
+						onChange={(e) => Handle_Connector_Label_Change(e.target.value)}
+						onBlur={Handle_Connector_Label_Commit}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter' || e.key === 'Escape') Handle_Connector_Label_Commit();
+							e.stopPropagation();
+						}}
+						style={{
+							position: 'absolute',
+							left: screen_x + 8,
+							top: screen_y - 12,
+							width: 120,
+							height: 24,
+							fontSize: 14 * viewport.zoom,
+							border: '2px solid #ffc107',
+							borderRadius: 4,
+							outline: 'none',
+							background: 'rgba(255,255,255,0.95)',
+							zIndex: 200,
+							boxSizing: 'border-box',
+							padding: '0 4px',
+						}}
+					/>
+				);
+			})()}
 
 			{/* Properties panel */}
 			<PropertiesPanel

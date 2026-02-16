@@ -1,5 +1,5 @@
 import type { Connector, Shape, Point } from './types';
-import { Port_Position, Port_Outward_Normal, Default_Control_Points } from './helpers';
+import { Port_Position, Port_Outward_Normal, Default_Control_Points, Point_At_T } from './helpers';
 
 interface ConnectorRendererProps {
 	connector: Connector;
@@ -8,9 +8,10 @@ interface ConnectorRendererProps {
 	on_pointer_down: (e: React.PointerEvent, connector: Connector) => void;
 	on_control_point_drag?: (connector_id: string, cp_index: number, e: React.PointerEvent) => void;
 	on_endpoint_drag?: (connector_id: string, end: 'source' | 'target', e: React.PointerEvent) => void;
+	on_label_t_drag?: (connector_id: string, e: React.PointerEvent) => void;
 }
 
-export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_down, on_control_point_drag, on_endpoint_drag }: ConnectorRendererProps) {
+export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_down, on_control_point_drag, on_endpoint_drag, on_label_t_drag }: ConnectorRendererProps) {
 	const source = Resolve_End(connector.source, shapes);
 	const target = Resolve_End(connector.target, shapes);
 
@@ -43,6 +44,8 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 			? Arrow_Head(cp[0], source, stroke_width)
 			: null;
 
+		const label_pt = connector.label ? Bezier_At_T(source, cp[0], cp[1], target, connector.label_t ?? 0.5) : null;
+
 		return (
 			<g onPointerDown={(e) => on_pointer_down(e, connector)} data-connector-id={connector.id}>
 				{/* Fat invisible hit area */}
@@ -51,6 +54,7 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 				<path d={d} fill="none" stroke={active_stroke} strokeWidth={active_width} pointerEvents="none" />
 				{target_arrow && <polygon points={Arrow_Points(target_arrow)} fill={active_stroke} pointerEvents="none" />}
 				{source_arrow && <polygon points={Arrow_Points(source_arrow)} fill={active_stroke} pointerEvents="none" />}
+				{label_pt && <Label_Group connector={connector} label_pt={label_pt} is_selected={is_selected} on_label_t_drag={on_label_t_drag} />}
 				{/* Control point + endpoint handles when selected */}
 				{is_selected && (
 					<>
@@ -95,6 +99,8 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 				? Arrow_Head(path[1] || target, source, stroke_width)
 				: null;
 
+			const label_pt = connector.label ? Polyline_At_T(path, connector.label_t ?? 0.5) : null;
+
 			return (
 				<g onPointerDown={(e) => on_pointer_down(e, connector)} data-connector-id={connector.id}>
 					<polyline points={path.map(p => `${p.x},${p.y}`).join(' ')}
@@ -103,6 +109,7 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 						fill="none" stroke={active_stroke} strokeWidth={active_width} pointerEvents="none" />
 					{target_arrow && <polygon points={Arrow_Points(target_arrow)} fill={active_stroke} pointerEvents="none" />}
 					{source_arrow && <polygon points={Arrow_Points(source_arrow)} fill={active_stroke} pointerEvents="none" />}
+					{label_pt && <Label_Group connector={connector} label_pt={label_pt} is_selected={is_selected} on_label_t_drag={on_label_t_drag} />}
 					{is_selected && (
 						<>
 							<EndpointHandle pt={source} end="source" connector_id={connector.id} on_drag={on_endpoint_drag} />
@@ -122,6 +129,8 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 		? Arrow_Head(target, source, stroke_width)
 		: null;
 
+	const label_pt = connector.label ? Point_At_T(source, target, connector.label_t ?? 0.5) : null;
+
 	return (
 		<g onPointerDown={(e) => on_pointer_down(e, connector)} data-connector-id={connector.id}>
 			<line x1={source.x} y1={source.y} x2={target.x} y2={target.y}
@@ -130,6 +139,7 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 				stroke={active_stroke} strokeWidth={active_width} pointerEvents="none" />
 			{target_arrow && <polygon points={Arrow_Points(target_arrow)} fill={active_stroke} pointerEvents="none" />}
 			{source_arrow && <polygon points={Arrow_Points(source_arrow)} fill={active_stroke} pointerEvents="none" />}
+			{label_pt && <Label_Group connector={connector} label_pt={label_pt} is_selected={is_selected} on_label_t_drag={on_label_t_drag} />}
 			{is_selected && (
 				<>
 					<EndpointHandle pt={source} end="source" connector_id={connector.id} on_drag={on_endpoint_drag} />
@@ -257,4 +267,71 @@ function Resolve_Normal(end: Connector['source'], shapes: Shape[]): Point | unde
 	const port = shape.ports.find(p => p.id === end.port_id);
 	if (!port) return undefined;
 	return Port_Outward_Normal(shape, port);
+}
+
+// Evaluate a cubic bézier at parametric t
+function Bezier_At_T(p0: Point, p1: Point, p2: Point, p3: Point, t: number): Point {
+	const u = 1 - t;
+	return {
+		x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+		y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+	};
+}
+
+// Evaluate a point on a polyline at parametric t (0→1 over total length)
+function Polyline_At_T(points: Point[], t: number): Point {
+	if (points.length < 2) return points[0] || { x: 0, y: 0 };
+	// Compute segment lengths
+	const segs: number[] = [];
+	let total = 0;
+	for (let i = 1; i < points.length; i++) {
+		const dx = points[i].x - points[i - 1].x;
+		const dy = points[i].y - points[i - 1].y;
+		const len = Math.sqrt(dx * dx + dy * dy);
+		segs.push(len);
+		total += len;
+	}
+	if (total < 0.001) return points[0];
+	const target_dist = t * total;
+	let accum = 0;
+	for (let i = 0; i < segs.length; i++) {
+		if (accum + segs[i] >= target_dist) {
+			const frac = (target_dist - accum) / segs[i];
+			return Point_At_T(points[i], points[i + 1], frac);
+		}
+		accum += segs[i];
+	}
+	return points[points.length - 1];
+}
+
+// Render label text and draggable attach handle for a connector
+function Label_Group({ connector, label_pt, is_selected, on_label_t_drag }: {
+	connector: Connector;
+	label_pt: Point;
+	is_selected: boolean;
+	on_label_t_drag?: (connector_id: string, e: React.PointerEvent) => void;
+}) {
+	if (!connector.label) return null;
+	const s = 5;
+	const handle_points = `${label_pt.x},${label_pt.y - s} ${label_pt.x + s},${label_pt.y} ${label_pt.x},${label_pt.y + s} ${label_pt.x - s},${label_pt.y}`;
+	return (
+		<>
+			{/* Label text, offset slightly below/right of attach point */}
+			<text
+				x={label_pt.x + 10} y={label_pt.y + 5}
+				fill="#333" fontSize={14} fontFamily="sans-serif"
+				pointerEvents="none"
+				style={{ userSelect: 'none' }}
+			>{connector.label}</text>
+			{/* Attach point handle — only visible when selected */}
+			{is_selected && (
+				<polygon
+					points={handle_points}
+					fill="#fff" stroke="#ffc107" strokeWidth={1.5}
+					style={{ cursor: 'move' }}
+					onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); on_label_t_drag?.(connector.id, e); }}
+				/>
+			)}
+		</>
+	);
 }

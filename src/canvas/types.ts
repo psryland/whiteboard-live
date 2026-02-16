@@ -83,6 +83,10 @@ export interface Connector {
 	routing: ConnectorRouting;
 	// User-editable control points for smooth (cubic bézier) routing
 	control_points?: Point[];
+	// Text label attached to the connector
+	label?: string;
+	// Parametric position of the label along the path (0 = source, 1 = target)
+	label_t?: number;
 	style: {
 		stroke: string;
 		stroke_width: number;

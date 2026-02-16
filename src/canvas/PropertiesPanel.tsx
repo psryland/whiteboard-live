@@ -172,7 +172,7 @@ export function PropertiesPanel({
 						readOnly
 						value={Share_Url(collab_session.Room_Id)}
 						style={{
-							width: '100%', fontSize: 10, color: '#666', background: '#f5f5f5',
+							display: 'block', width: '100%', fontSize: 10, color: '#666', background: '#f5f5f5',
 							borderRadius: 4, padding: '4px 6px', marginBottom: 8,
 							border: '1px solid #e0e0e0', boxSizing: 'border-box', outline: 'none',
 						}}

@@ -13,6 +13,7 @@ interface ToolbarProps {
 	on_undo: () => void;
 	on_redo: () => void;
 	on_delete: () => void;
+	on_duplicate: () => void;
 	can_undo: boolean;
 	can_redo: boolean;
 	has_selection: boolean;
@@ -65,6 +66,7 @@ export function Toolbar({
 	on_undo,
 	on_redo,
 	on_delete,
+	on_duplicate,
 	can_undo,
 	can_redo,
 	has_selection,
@@ -345,6 +347,9 @@ export function Toolbar({
 					</div>
 				</DropdownSection>
 			</ToolBtnWithDropdown>
+
+			{/* Duplicate */}
+			<ToolBtn icon="⧉" label="Duplicate (Ctrl+D)" active={false} on_click={on_duplicate} disabled={!has_selection || eb} />
 
 			<div style={separator_style} />
 

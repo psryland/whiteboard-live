@@ -305,8 +305,7 @@ export function Default_Control_Points(source: Point, target: Point, source_norm
 }
 
 // Compute axis-aligned bounding box of a set of points
-export function Freehand_Bounds(points: Point[]): Bounds {
-	if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+export function Freehand_Bounds(points: Point[]): Bounds {	if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
 	let min_x = Infinity, min_y = Infinity, max_x = -Infinity, max_y = -Infinity;
 	for (const p of points) {
 		if (p.x < min_x) min_x = p.x;
@@ -362,4 +361,18 @@ export function Get_Svg_Path_From_Stroke(stroke: [number, number][]): string {
 	);
 	d.push('Z');
 	return d.join(' ');
+}
+
+// Project a point onto a line segment (source→target) and return the parametric t value
+export function Closest_T_On_Line(source: Point, target: Point, pt: Point): number {
+	const dx = target.x - source.x;
+	const dy = target.y - source.y;
+	const len_sq = dx * dx + dy * dy;
+	if (len_sq < 0.001) return 0.5;
+	return ((pt.x - source.x) * dx + (pt.y - source.y) * dy) / len_sq;
+}
+
+// Interpolate a point on a line at parametric t (0 = source, 1 = target)
+export function Point_At_T(source: Point, target: Point, t: number): Point {
+	return { x: source.x + (target.x - source.x) * t, y: source.y + (target.y - source.y) * t };
 }
