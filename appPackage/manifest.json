@@ -1,7 +1,7 @@
 {
 	"$schema": "https://developer.microsoft.com/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
 	"manifestVersion": "1.17",
-	"version": "1.0.7",
+	"version": "1.1.0",
 	"id": "3b60a7e6-440e-4777-a769-c4c4c3f2e244",
 	"developer": {
 		"name": "Rylogic",
@@ -40,10 +40,6 @@
 		}
 	],
 	"permissions": ["identity"],
-	"webApplicationInfo": {
-		"id": "1f1a334a-60a9-4bf8-bd92-3b47c5063651",
-		"resource": "api://yellow-plant-01a814f00.6.azurestaticapps.net/1f1a334a-60a9-4bf8-bd92-3b47c5063651"
-	},
 	"validDomains": [
 		"yellow-plant-01a814f00.6.azurestaticapps.net"
 	]
