@@ -51,8 +51,13 @@ export function App() {
 
 	useEffect(() => {
 		msal_init.then(() => {
-			// If we just processed an auth response, clean up the URL hash
 			if (is_auth_response) {
+				// We're in the popup or redirect with an auth response.
+				// If this is a popup, close it. Otherwise clean up and show the app.
+				if (window.opener) {
+					window.close();
+					return;
+				}
 				window.location.hash = '';
 				history.replaceState(null, '', window.location.pathname);
 				set_auth_handled(true);
