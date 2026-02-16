@@ -47,9 +47,18 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 export function App() {
 	const [is_config_frame, set_config_frame] = useState(false);
 	const [msal_ready, set_msal_ready] = useState(false);
+	const [auth_handled, set_auth_handled] = useState(!is_auth_response);
 
 	useEffect(() => {
-		msal_init.then(() => set_msal_ready(true));
+		msal_init.then(() => {
+			// If we just processed an auth response, clean up the URL hash
+			if (is_auth_response) {
+				window.location.hash = '';
+				history.replaceState(null, '', window.location.pathname);
+				set_auth_handled(true);
+			}
+			set_msal_ready(true);
+		});
 	}, []);
 
 	// Skip Teams SDK init and full rendering if we're handling an auth response
@@ -90,10 +99,7 @@ export function App() {
 		Init_Teams();
 	}, []);
 
-	if (!msal_ready) return null;
-
-	// Auth response page — show loading while MSAL processes, then close popup
-	if (is_auth_response) return <div style={{ padding: 20, textAlign: 'center' }}>Signing in...</div>;
+	if (!msal_ready || !auth_handled) return <div style={{ padding: 20, textAlign: 'center' }}>Signing in...</div>;
 
 	if (is_config_frame) {
 		return (
