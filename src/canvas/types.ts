@@ -70,12 +70,16 @@ export interface ConnectorEnd {
 }
 
 export type ArrowType = 'forward' | 'back' | 'both';
+export type ConnectorRouting = 'ortho' | 'smooth' | 'straight';
 
 export interface Connector {
 	id: string;
 	source: ConnectorEnd;
 	target: ConnectorEnd;
 	arrow_type: ArrowType;
+	routing: ConnectorRouting;
+	// User-editable control points for smooth (cubic bézier) routing
+	control_points?: Point[];
 	style: {
 		stroke: string;
 		stroke_width: number;
@@ -117,7 +121,10 @@ export interface ToolSettings {
 	text_size: number;
 	text_color: string;
 	shape_type: ShapeType;
+	shape_fill: string;
+	shape_stroke: string;
 	connector_thickness: number;
+	connector_routing: ConnectorRouting;
 	arrow_type: ArrowType;
 	laser_color: string;
 }
@@ -128,7 +135,10 @@ export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
 	text_size: 14,
 	text_color: '#333333',
 	shape_type: 'rectangle',
+	shape_fill: '#ffffff',
+	shape_stroke: '#333333',
 	connector_thickness: 2,
+	connector_routing: 'ortho',
 	arrow_type: 'forward',
 	laser_color: '#ff2222',
 };

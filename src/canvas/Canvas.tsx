@@ -7,7 +7,7 @@ import { UndoManager } from './undo';
 import { ShapeRenderer } from './ShapeRenderer';
 import { ConnectorRenderer } from './ConnectorRenderer';
 import { Toolbar } from './Toolbar';
-import { ShapePalette } from './ShapePalette';
+import { BoardPanel } from './BoardPanel';
 import { PropertiesPanel } from './PropertiesPanel';
 
 const STORAGE_KEY = 'whitebored-of-peace';
@@ -24,7 +24,7 @@ function Load_State(): CanvasState {
 				style: { rounded: false, ...s.style },
 			}));
 			// Migrate connectors missing arrow_type
-			const connectors = (parsed.connectors || []).map((c: any) => ({ arrow_type: 'forward' as const, ...c }));
+			const connectors = (parsed.connectors || []).map((c: any) => ({ arrow_type: 'forward' as const, routing: 'ortho' as const, ...c }));
 			return { shapes, connectors, freehand_paths: parsed.freehand_paths || [] };
 		}
 	} catch { /* ignore */ }
@@ -60,7 +60,7 @@ export function Canvas() {
 
 	// Drag state
 	const drag_state = useRef<{
-		type: 'none' | 'pan' | 'move' | 'create' | 'marquee' | 'connector' | 'resize' | 'rotate' | 'freehand' | 'laser' | 'freehand_move' | 'freehand_resize';
+		type: 'none' | 'pan' | 'move' | 'create' | 'marquee' | 'connector' | 'resize' | 'rotate' | 'freehand' | 'laser' | 'freehand_move' | 'freehand_resize' | 'cp_drag';
 		start_canvas: Point;
 		start_screen: Point;
 		start_viewport?: Viewport;
@@ -85,6 +85,9 @@ export function Canvas() {
 		freehand_path_origins?: Map<string, Point[]>;
 		freehand_resize_bounds?: { x: number; y: number; width: number; height: number };
 		freehand_resize_handle?: number;
+		// Control point drag state
+		cp_connector_id?: string;
+		cp_index?: number;
 	}>({ type: 'none', start_canvas: { x: 0, y: 0 }, start_screen: { x: 0, y: 0 } });
 
 	// Marquee rectangle (screen coords for overlay display)
@@ -104,7 +107,8 @@ export function Canvas() {
 	const [tool_settings, set_tool_settings] = useState<ToolSettings>(DEFAULT_TOOL_SETTINGS);
 
 	// Shape palette sidebar
-	const [show_shape_palette, set_show_shape_palette] = useState(false);
+	const [show_board_panel, set_show_board_panel] = useState(false);
+	const [current_board_id, set_current_board_id] = useState<string | null>(null);
 
 	// Quick-connect: track the first shape for Shift+click connection
 	const quick_connect_source = useRef<string | null>(null);
@@ -258,6 +262,7 @@ export function Canvas() {
 			source: { shape_id: source_id, port_id: src_port.id, x: 0, y: 0 },
 			target: { shape_id: target_id, port_id: tgt_port.id, x: 0, y: 0 },
 			arrow_type: tool_settings.arrow_type,
+			routing: tool_settings.connector_routing,
 			style: { stroke: '#333333', stroke_width: tool_settings.connector_thickness },
 		}]);
 	}, [shapes, Push_Undo, tool_settings]);
@@ -281,8 +286,9 @@ export function Canvas() {
 	// ── Pointer events on the SVG background ──
 
 	const Handle_Canvas_PointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-		// Only handle clicks on the SVG background, not on shapes
-		if ((e.target as Element) !== svg_ref.current) return;
+		// Freehand and laser tools should work even when clicking over existing objects
+		const on_background = (e.target as Element) === svg_ref.current;
+		if (!on_background && active_tool !== 'freehand' && active_tool !== 'laser') return;
 
 		const screen_pt = Get_SVG_Point(e);
 		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
@@ -379,7 +385,7 @@ export function Canvas() {
 					height: 0,
 					rotation: 0,
 					text: '',
-					style: { ...DEFAULT_STYLE },
+					style: { ...DEFAULT_STYLE, fill: tool_settings.shape_fill, stroke: tool_settings.shape_stroke },
 					ports: Default_Ports(),
 				};
 				drag_state.current = {
@@ -551,6 +557,14 @@ export function Canvas() {
 					})),
 				};
 			}));
+		} else if (ds.type === 'cp_drag' && ds.cp_connector_id != null) {
+			// Drag a bézier control point to the current canvas position
+			set_connectors(prev => prev.map(c => {
+				if (c.id !== ds.cp_connector_id) return c;
+				const cp = [...(c.control_points || [{ x: 0, y: 0 }, { x: 0, y: 0 }])];
+				cp[ds.cp_index!] = canvas_pt;
+				return { ...c, control_points: cp };
+			}));
 		} else if (ds.type === 'laser' && ds.laser_points) {
 			const now = Date.now();
 			ds.laser_points.push({ ...canvas_pt, timestamp: now });
@@ -614,6 +628,7 @@ export function Canvas() {
 						y: 0,
 					},
 					arrow_type: tool_settings.arrow_type,
+					routing: tool_settings.connector_routing,
 					style: { stroke: '#333333', stroke_width: tool_settings.connector_thickness },
 				};
 				set_connectors(prev => [...prev, new_connector]);
@@ -642,6 +657,8 @@ export function Canvas() {
 			// Move complete
 		} else if (ds.type === 'freehand_resize') {
 			// Resize complete
+		} else if (ds.type === 'cp_drag') {
+			// Control point drag complete
 		} else if (ds.type === 'laser') {
 			// Laser trail fades on its own via animation
 		}
@@ -652,6 +669,9 @@ export function Canvas() {
 	// ── Shape pointer events ──
 
 	const Handle_Shape_PointerDown = useCallback((e: React.PointerEvent, shape: Shape) => {
+		// When drawing or using laser, let the event bubble up to the canvas handler
+		if (active_tool === 'freehand' || active_tool === 'laser') return;
+
 		e.stopPropagation();
 		const screen_pt = Get_SVG_Point(e);
 		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
@@ -790,7 +810,7 @@ export function Canvas() {
 			height: 80,
 			rotation: 0,
 			text: '',
-			style: { ...DEFAULT_STYLE },
+			style: { ...DEFAULT_STYLE, fill: tool_settings.shape_fill, stroke: tool_settings.shape_stroke },
 			ports: Default_Ports(),
 		};
 		set_shapes(prev => [...prev, new_shape]);
@@ -875,6 +895,8 @@ export function Canvas() {
 
 	// Connector click handler
 	const Handle_Connector_PointerDown = useCallback((e: React.PointerEvent, connector: Connector) => {
+		if (active_tool === 'freehand' || active_tool === 'laser') return;
+
 		e.stopPropagation();
 		if (e.shiftKey) {
 			set_selected_ids(prev => {
@@ -886,10 +908,45 @@ export function Canvas() {
 		} else {
 			set_selected_ids(new Set([connector.id]));
 		}
-	}, []);
+	}, [active_tool]);
+
+	// Board persistence handlers
+	const Handle_Load_Board = useCallback((state: CanvasState) => {
+		set_shapes(state.shapes || []);
+		set_connectors(state.connectors || []);
+		set_freehand_paths(state.freehand_paths || []);
+		set_selected_ids(new Set());
+		undo_mgr.Clear();
+	}, [undo_mgr]);
+
+	const Handle_Clear_Canvas = useCallback(() => {
+		if (!confirm('Clear the entire canvas?')) return;
+		Push_Undo();
+		set_shapes([]);
+		set_connectors([]);
+		set_freehand_paths([]);
+		set_selected_ids(new Set());
+	}, [Push_Undo]);
+
+	// Control point drag handler for smooth connectors
+	const Handle_Control_Point_Drag = useCallback((connector_id: string, cp_index: number, e: React.PointerEvent) => {
+		const screen_pt = Get_SVG_Point(e);
+		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
+		Push_Undo();
+		drag_state.current = {
+			type: 'cp_drag',
+			start_canvas: canvas_pt,
+			start_screen: screen_pt,
+			cp_connector_id: connector_id,
+			cp_index,
+		};
+	}, [viewport, Push_Undo, Get_SVG_Point]);
 
 	// Freehand path click handler
 	const Handle_Freehand_PointerDown = useCallback((e: React.PointerEvent, path_id: string) => {
+		// When drawing or using laser, let the event bubble up to the canvas handler
+		if (active_tool === 'freehand' || active_tool === 'laser') return;
+
 		e.stopPropagation();
 		const screen_pt = Get_SVG_Point(e);
 		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
@@ -943,7 +1000,7 @@ export function Canvas() {
 			freehand_path_origins: origins,
 			moved: false,
 		};
-	}, [viewport, selected_ids, freehand_paths, Push_Undo, Get_SVG_Point]);
+	}, [active_tool, viewport, selected_ids, freehand_paths, Push_Undo, Get_SVG_Point]);
 
 	// The editing shape (for text input overlay)
 	const editing_shape = editing_shape_id ? shapes.find(s => s.id === editing_shape_id) : null;
@@ -998,10 +1055,14 @@ export function Canvas() {
 				has_selection={selected_ids.size > 0}
 			/>
 
-			<ShapePalette
-				on_select_tool={(tool) => { set_active_tool(tool); set_show_shape_palette(false); }}
-				is_open={show_shape_palette}
-				on_toggle={() => set_show_shape_palette(prev => !prev)}
+			<BoardPanel
+				is_open={show_board_panel}
+				on_toggle={() => set_show_board_panel(prev => !prev)}
+				current_state={{ shapes, connectors, freehand_paths }}
+				on_load_board={Handle_Load_Board}
+				on_clear_canvas={Handle_Clear_Canvas}
+				current_board_id={current_board_id}
+				on_board_id_change={set_current_board_id}
 			/>
 
 			<svg
@@ -1059,6 +1120,7 @@ export function Canvas() {
 							shapes={shapes}
 							is_selected={selected_ids.has(c.id)}
 							on_pointer_down={Handle_Connector_PointerDown}
+							on_control_point_drag={Handle_Control_Point_Drag}
 						/>
 					))}
 

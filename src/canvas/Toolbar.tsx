@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { ToolType, ToolSettings, ShapeType, ArrowType } from './types';
+import type { ToolType, ToolSettings, ShapeType, ArrowType, ConnectorRouting } from './types';
 
 interface ToolbarProps {
 	active_tool: ToolType;
@@ -25,6 +25,22 @@ const QUICK_COLORS = [
 
 const LASER_COLORS = [
 	'#ff2222', '#22cc44', '#2266ff', '#ff8800', '#ffdd00', '#ff00ff', '#00cccc', '#ffffff',
+];
+
+// Paired fill/stroke presets: light fill with a darker border of the same hue
+const SHAPE_COLOR_PRESETS: { fill: string; stroke: string }[] = [
+	{ fill: '#ffffff', stroke: '#333333' },
+	{ fill: '#e8eaf6', stroke: '#3f51b5' },
+	{ fill: '#dbeafe', stroke: '#2563eb' },
+	{ fill: '#cffafe', stroke: '#0891b2' },
+	{ fill: '#d1fae5', stroke: '#059669' },
+	{ fill: '#dcfce7', stroke: '#16a34a' },
+	{ fill: '#fef9c3', stroke: '#ca8a04' },
+	{ fill: '#ffedd5', stroke: '#ea580c' },
+	{ fill: '#fee2e2', stroke: '#dc2626' },
+	{ fill: '#fce7f3', stroke: '#db2777' },
+	{ fill: '#f3e8ff', stroke: '#9333ea' },
+	{ fill: '#f1f5f9', stroke: '#64748b' },
 ];
 
 const SHAPE_ICONS: Record<ShapeType, string> = {
@@ -179,6 +195,32 @@ export function Toolbar({
 						))}
 					</div>
 				</DropdownSection>
+				<DropdownSection label="Colour">
+					<div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 3 }}>
+						{SHAPE_COLOR_PRESETS.map((preset, i) => (
+							<button
+								key={i}
+								onClick={() => on_tool_settings_change({ shape_fill: preset.fill, shape_stroke: preset.stroke })}
+								title={`${preset.fill} / ${preset.stroke}`}
+								style={{
+									width: 28, height: 28,
+									background: preset.fill,
+									border: tool_settings.shape_fill === preset.fill && tool_settings.shape_stroke === preset.stroke
+										? `3px solid ${preset.stroke}`
+										: `2px solid ${preset.stroke}`,
+									borderRadius: 4,
+									cursor: 'pointer',
+									padding: 0,
+									boxSizing: 'border-box',
+									outline: tool_settings.shape_fill === preset.fill && tool_settings.shape_stroke === preset.stroke
+										? '2px solid #2196F3'
+										: 'none',
+									outlineOffset: 1,
+								}}
+							/>
+						))}
+					</div>
+				</DropdownSection>
 			</ToolBtnWithDropdown>
 
 			{/* Connector */}
@@ -218,6 +260,23 @@ export function Toolbar({
 									...radio_chip_style,
 									background: tool_settings.arrow_type === type ? '#e3f2fd' : '#f5f5f5',
 									border: tool_settings.arrow_type === type ? '1px solid #90caf9' : '1px solid #ddd',
+								}}
+							>
+								{label}
+							</button>
+						))}
+					</div>
+				</DropdownSection>
+				<DropdownSection label="Routing">
+					<div style={chip_row_style}>
+						{([['ortho', '⊾ Orthogonal'], ['smooth', '∿ Smooth'], ['straight', '╲ Straight']] as const).map(([type, label]) => (
+							<button
+								key={type}
+								onClick={() => on_tool_settings_change({ connector_routing: type as ConnectorRouting })}
+								style={{
+									...radio_chip_style,
+									background: tool_settings.connector_routing === type ? '#e3f2fd' : '#f5f5f5',
+									border: tool_settings.connector_routing === type ? '1px solid #90caf9' : '1px solid #ddd',
 								}}
 							>
 								{label}
@@ -273,6 +332,8 @@ export function Toolbar({
 					</div>
 				</DropdownSection>
 			</ToolBtnWithDropdown>
+
+			<div style={separator_style} />
 
 			{/* Undo / Redo */}
 			<ToolBtn icon="↩" label="Undo (Ctrl+Z)" active={false} on_click={on_undo} disabled={!can_undo} />

@@ -6,9 +6,10 @@ interface ConnectorRendererProps {
 	shapes: Shape[];
 	is_selected: boolean;
 	on_pointer_down: (e: React.PointerEvent, connector: Connector) => void;
+	on_control_point_drag?: (connector_id: string, cp_index: number, e: React.PointerEvent) => void;
 }
 
-export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_down }: ConnectorRendererProps) {
+export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_down, on_control_point_drag }: ConnectorRendererProps) {
 	const source = Resolve_End(connector.source, shapes);
 	const target = Resolve_End(connector.target, shapes);
 
@@ -20,9 +21,62 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 
 	// Default to 'forward' for legacy connectors
 	const arrow_type = connector.arrow_type ?? 'forward';
+	const routing = connector.routing ?? 'ortho';
 
-	// Use orthogonal routing when both ends are bound to shape ports
-	const use_ortho = connector.source.shape_id && connector.target.shape_id
+	// Resolve control points for smooth routing
+	const cp = connector.control_points ?? Default_Control_Points(source, target);
+
+	if (routing === 'smooth') {
+		// Cubic bézier spline
+		const d = `M ${source.x} ${source.y} C ${cp[0].x} ${cp[0].y}, ${cp[1].x} ${cp[1].y}, ${target.x} ${target.y}`;
+
+		// Arrow heads computed from tangent at endpoints
+		const target_arrow = (arrow_type === 'forward' || arrow_type === 'both')
+			? Arrow_Head(cp[1], target)
+			: null;
+		const source_arrow = (arrow_type === 'back' || arrow_type === 'both')
+			? Arrow_Head(cp[0], source)
+			: null;
+
+		return (
+			<g onPointerDown={(e) => on_pointer_down(e, connector)} data-connector-id={connector.id}>
+				{/* Fat invisible hit area */}
+				<path d={d} fill="none" stroke="transparent" strokeWidth={12} style={{ cursor: 'pointer' }} />
+				{/* Visible curve */}
+				<path d={d} fill="none" stroke={active_stroke} strokeWidth={active_width} pointerEvents="none" />
+				{target_arrow && <polygon points={Arrow_Points(target_arrow)} fill={active_stroke} pointerEvents="none" />}
+				{source_arrow && <polygon points={Arrow_Points(source_arrow)} fill={active_stroke} pointerEvents="none" />}
+				{/* Control point handles when selected */}
+				{is_selected && (
+					<>
+						{/* Tangent lines from endpoints to control points */}
+						<line x1={source.x} y1={source.y} x2={cp[0].x} y2={cp[0].y}
+							stroke="#aaa" strokeWidth={1} strokeDasharray="3 2" pointerEvents="none" />
+						<line x1={target.x} y1={target.y} x2={cp[1].x} y2={cp[1].y}
+							stroke="#aaa" strokeWidth={1} strokeDasharray="3 2" pointerEvents="none" />
+						{/* Draggable control point circles */}
+						{cp.map((pt, i) => (
+							<circle
+								key={i}
+								cx={pt.x} cy={pt.y} r={5}
+								fill="#fff" stroke="#2196F3" strokeWidth={1.5}
+								style={{ cursor: 'move' }}
+								data-cp-index={i}
+								data-connector-id={connector.id}
+								onPointerDown={(e) => {
+									e.stopPropagation();
+									on_control_point_drag?.(connector.id, i, e);
+								}}
+							/>
+						))}
+					</>
+				)}
+			</g>
+		);
+	}
+
+	// Use orthogonal routing when both ends are bound to shape ports and routing is ortho
+	const use_ortho = routing === 'ortho' && connector.source.shape_id && connector.target.shape_id
 		&& connector.source.port_id && connector.target.port_id;
 
 	if (use_ortho) {
@@ -34,12 +88,9 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 		if (src_port && tgt_port) {
 			const path = Orthogonal_Path(source, target, src_port.side, tgt_port.side);
 
-			// Target arrow (forward or both)
 			const target_arrow = (arrow_type === 'forward' || arrow_type === 'both')
 				? Arrow_Head(path[path.length - 2] || source, target)
 				: null;
-
-			// Source arrow (back or both)
 			const source_arrow = (arrow_type === 'back' || arrow_type === 'both')
 				? Arrow_Head(path[1] || target, source)
 				: null;
@@ -75,6 +126,16 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 			{source_arrow && <polygon points={Arrow_Points(source_arrow)} fill={active_stroke} pointerEvents="none" />}
 		</g>
 	);
+}
+
+// Default control points placed at 1/3 and 2/3 along the line between source and target
+function Default_Control_Points(source: Point, target: Point): Point[] {
+	const dx = target.x - source.x;
+	const dy = target.y - source.y;
+	return [
+		{ x: source.x + dx * 0.33, y: source.y + dy * 0.33 },
+		{ x: source.x + dx * 0.66, y: source.y + dy * 0.66 },
+	];
 }
 
 // Build an L-shaped or S-shaped orthogonal path between two ports
