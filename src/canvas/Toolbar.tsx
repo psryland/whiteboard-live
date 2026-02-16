@@ -6,6 +6,8 @@ interface ToolbarProps {
 	on_undo: () => void;
 	on_redo: () => void;
 	on_delete: () => void;
+	on_toggle_colour_picker: () => void;
+	on_duplicate: () => void;
 	can_undo: boolean;
 	can_redo: boolean;
 	has_selection: boolean;
@@ -33,6 +35,8 @@ export function Toolbar({
 	on_undo,
 	on_redo,
 	on_delete,
+	on_toggle_colour_picker,
+	on_duplicate,
 	can_undo,
 	can_redo,
 	has_selection,
@@ -53,6 +57,11 @@ export function Toolbar({
 					{t.icon}
 				</button>
 			))}
+
+			<div style={separator_style} />
+
+			<button onClick={on_toggle_colour_picker} disabled={!has_selection} title="Colour (C)" style={btn_style}>🎨</button>
+			<button onClick={on_duplicate} disabled={!has_selection} title="Duplicate (Ctrl+D)" style={btn_style}>⧉</button>
 
 			<div style={separator_style} />
 

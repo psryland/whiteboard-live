@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd } from './types';
+import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle } from './types';
 import { DEFAULT_STYLE } from './types';
 import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds } from './helpers';
 import { UndoManager } from './undo';
 import { ShapeRenderer } from './ShapeRenderer';
 import { ConnectorRenderer } from './ConnectorRenderer';
 import { Toolbar } from './Toolbar';
+import { ColourPicker } from './ColourPicker';
+import { ShapePalette } from './ShapePalette';
 
 const STORAGE_KEY = 'whitebored-of-peace';
 
@@ -66,6 +68,18 @@ export function Canvas() {
 	const [editing_shape_id, set_editing_shape_id] = useState<string | null>(null);
 	const text_input_ref = useRef<HTMLInputElement>(null);
 
+	// Colour picker
+	const [show_colour_picker, set_show_colour_picker] = useState(false);
+
+	// Shape palette sidebar
+	const [show_shape_palette, set_show_shape_palette] = useState(false);
+
+	// Quick-connect: track the first shape for Shift+click connection
+	const quick_connect_source = useRef<string | null>(null);
+
+	// Clipboard for copy/paste
+	const clipboard = useRef<{ shapes: Shape[]; connectors: Connector[] } | null>(null);
+
 	// Persist state on change
 	useEffect(() => {
 		Save_State({ shapes, connectors });
@@ -114,6 +128,99 @@ export function Canvas() {
 		));
 		set_selected_ids(new Set());
 	}, [selected_ids, Push_Undo]);
+
+	// Duplicate selected shapes with a small offset
+	const Duplicate_Selected = useCallback(() => {
+		if (selected_ids.size === 0) return;
+		Push_Undo();
+		const id_map = new Map<string, string>();
+		const new_shapes: Shape[] = [];
+		for (const s of shapes) {
+			if (!selected_ids.has(s.id)) continue;
+			const new_id = Generate_Id('s');
+			id_map.set(s.id, new_id);
+			new_shapes.push({ ...s, id: new_id, x: s.x + 20, y: s.y + 20, ports: Default_Ports() });
+		}
+		// Duplicate connectors between selected shapes
+		const new_connectors: Connector[] = [];
+		for (const c of connectors) {
+			if (!selected_ids.has(c.id)) continue;
+			const new_src_id = c.source.shape_id ? id_map.get(c.source.shape_id) : null;
+			const new_tgt_id = c.target.shape_id ? id_map.get(c.target.shape_id) : null;
+			if (new_src_id || new_tgt_id) {
+				new_connectors.push({
+					...c,
+					id: Generate_Id('c'),
+					source: { ...c.source, shape_id: new_src_id ?? c.source.shape_id },
+					target: { ...c.target, shape_id: new_tgt_id ?? c.target.shape_id },
+				});
+			}
+		}
+		set_shapes(prev => [...prev, ...new_shapes]);
+		set_connectors(prev => [...prev, ...new_connectors]);
+		set_selected_ids(new Set(new_shapes.map(s => s.id)));
+	}, [selected_ids, shapes, connectors, Push_Undo]);
+
+	// Copy selected shapes to clipboard
+	const Copy_Selected = useCallback(() => {
+		if (selected_ids.size === 0) return;
+		const copied_shapes = shapes.filter(s => selected_ids.has(s.id));
+		const copied_connectors = connectors.filter(c => selected_ids.has(c.id));
+		clipboard.current = { shapes: copied_shapes, connectors: copied_connectors };
+	}, [selected_ids, shapes, connectors]);
+
+	// Paste from clipboard with offset
+	const Paste = useCallback(() => {
+		if (!clipboard.current || clipboard.current.shapes.length === 0) return;
+		Push_Undo();
+		const id_map = new Map<string, string>();
+		const new_shapes = clipboard.current.shapes.map(s => {
+			const new_id = Generate_Id('s');
+			id_map.set(s.id, new_id);
+			return { ...s, id: new_id, x: s.x + 30, y: s.y + 30, ports: Default_Ports() };
+		});
+		const new_connectors = clipboard.current.connectors.map(c => ({
+			...c,
+			id: Generate_Id('c'),
+			source: { ...c.source, shape_id: c.source.shape_id ? (id_map.get(c.source.shape_id) ?? c.source.shape_id) : null },
+			target: { ...c.target, shape_id: c.target.shape_id ? (id_map.get(c.target.shape_id) ?? c.target.shape_id) : null },
+		}));
+		set_shapes(prev => [...prev, ...new_shapes]);
+		set_connectors(prev => [...prev, ...new_connectors]);
+		set_selected_ids(new Set(new_shapes.map(s => s.id)));
+		// Update clipboard positions so repeated paste cascades
+		clipboard.current = { shapes: new_shapes, connectors: new_connectors };
+	}, [Push_Undo]);
+
+	// Apply colour changes to selected shapes
+	const Apply_Style_Change = useCallback((changes: Partial<ShapeStyle>) => {
+		Push_Undo();
+		set_shapes(prev => prev.map(s =>
+			selected_ids.has(s.id) ? { ...s, style: { ...s.style, ...changes } } : s
+		));
+	}, [selected_ids, Push_Undo]);
+
+	// Quick-connect: auto-create arrow between two shapes
+	const Quick_Connect = useCallback((source_id: string, target_id: string) => {
+		if (source_id === target_id) return;
+		const src = shapes.find(s => s.id === source_id);
+		const tgt = shapes.find(s => s.id === target_id);
+		if (!src || !tgt) return;
+
+		// Find the best ports based on relative positions
+		const src_centre = { x: src.x + src.width / 2, y: src.y + src.height / 2 };
+		const tgt_centre = { x: tgt.x + tgt.width / 2, y: tgt.y + tgt.height / 2 };
+		const src_port = Nearest_Port(src, tgt_centre);
+		const tgt_port = Nearest_Port(tgt, src_centre);
+
+		Push_Undo();
+		set_connectors(prev => [...prev, {
+			id: Generate_Id('c'),
+			source: { shape_id: source_id, port_id: src_port.id, x: 0, y: 0 },
+			target: { shape_id: target_id, port_id: tgt_port.id, x: 0, y: 0 },
+			style: { stroke: '#333333', stroke_width: 2 },
+		}]);
+	}, [shapes, Push_Undo]);
 
 	// Get SVG-relative mouse position
 	const Get_SVG_Point = useCallback((e: React.MouseEvent | PointerEvent | MouseEvent): Point => {
@@ -334,15 +441,27 @@ export function Canvas() {
 
 		// Select the shape
 		if (e.shiftKey) {
-			// Toggle selection
+			// Quick-connect: Shift+click on a shape
+			if (quick_connect_source.current && quick_connect_source.current !== shape.id) {
+				Quick_Connect(quick_connect_source.current, shape.id);
+				quick_connect_source.current = null;
+				set_selected_ids(new Set([shape.id]));
+				return;
+			}
+			// First Shift+click — set as source
+			quick_connect_source.current = shape.id;
+			// Also toggle selection
 			set_selected_ids(prev => {
 				const next = new Set(prev);
 				if (next.has(shape.id)) next.delete(shape.id);
 				else next.add(shape.id);
 				return next;
 			});
-		} else if (!selected_ids.has(shape.id)) {
-			set_selected_ids(new Set([shape.id]));
+		} else {
+			quick_connect_source.current = null;
+			if (!selected_ids.has(shape.id)) {
+				set_selected_ids(new Set([shape.id]));
+			}
 		}
 
 		// Start dragging
@@ -437,6 +556,9 @@ export function Canvas() {
 				if (e.key === 'z') { e.preventDefault(); Do_Undo(); }
 				if (e.key === 'y') { e.preventDefault(); Do_Redo(); }
 				if (e.key === 'a') { e.preventDefault(); set_selected_ids(new Set(shapes.map(s => s.id))); }
+				if (e.key === 'c') { e.preventDefault(); Copy_Selected(); }
+				if (e.key === 'v') { e.preventDefault(); Paste(); }
+				if (e.key === 'd') { e.preventDefault(); Duplicate_Selected(); }
 				return;
 			}
 
@@ -460,7 +582,7 @@ export function Canvas() {
 
 		window.addEventListener('keydown', On_KeyDown);
 		return () => window.removeEventListener('keydown', On_KeyDown);
-	}, [editing_shape_id, shapes, Do_Undo, Do_Redo, Delete_Selected]);
+	}, [editing_shape_id, shapes, Do_Undo, Do_Redo, Delete_Selected, Copy_Selected, Paste, Duplicate_Selected]);
 
 	// Connector click handler
 	const Handle_Connector_PointerDown = useCallback((e: React.PointerEvent, connector: Connector) => {
@@ -480,6 +602,14 @@ export function Canvas() {
 	// The editing shape (for text input overlay)
 	const editing_shape = editing_shape_id ? shapes.find(s => s.id === editing_shape_id) : null;
 
+	// Get the style of the first selected shape (for the colour picker)
+	const selected_shape_style = (() => {
+		for (const s of shapes) {
+			if (selected_ids.has(s.id)) return s.style;
+		}
+		return DEFAULT_STYLE;
+	})();
+
 	return (
 		<div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#f8f9fa' }}>
 			<Toolbar
@@ -488,9 +618,25 @@ export function Canvas() {
 				on_undo={Do_Undo}
 				on_redo={Do_Redo}
 				on_delete={Delete_Selected}
+				on_toggle_colour_picker={() => set_show_colour_picker(prev => !prev)}
+				on_duplicate={Duplicate_Selected}
 				can_undo={undo_mgr.Can_Undo}
 				can_redo={undo_mgr.Can_Redo}
 				has_selection={selected_ids.size > 0}
+			/>
+
+			{show_colour_picker && selected_ids.size > 0 && (
+				<ColourPicker
+					style={selected_shape_style}
+					on_change={Apply_Style_Change}
+					on_close={() => set_show_colour_picker(false)}
+				/>
+			)}
+
+			<ShapePalette
+				on_select_tool={(tool) => { set_active_tool(tool); set_show_shape_palette(false); }}
+				is_open={show_shape_palette}
+				on_toggle={() => set_show_shape_palette(prev => !prev)}
 			/>
 
 			<svg
