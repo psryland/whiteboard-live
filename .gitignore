@@ -6,3 +6,5 @@ dist/
 appPackage/build/
 appPackage/app.zip
 certs/
+debug-azure.png
+debug-screenshot.png

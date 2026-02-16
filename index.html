@@ -16,6 +16,19 @@
 </head>
 <body>
 	<div id="root"></div>
+	<div id="error-display" style="display:none; position:fixed; bottom:0; left:0; right:0; background:red; color:white; padding:8px; font-family:monospace; font-size:12px; z-index:99999; max-height:30vh; overflow:auto;"></div>
+	<script>
+		// Catch all JS errors and display them on-page
+		var errDiv = document.getElementById('error-display');
+		window.onerror = function(msg, src, line, col, err) {
+			errDiv.style.display = 'block';
+			errDiv.innerHTML += '<div>' + msg + ' at ' + src + ':' + line + '</div>';
+		};
+		window.onunhandledrejection = function(e) {
+			errDiv.style.display = 'block';
+			errDiv.innerHTML += '<div>Unhandled: ' + (e.reason && e.reason.message || e.reason) + '</div>';
+		};
+	</script>
 	<script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
