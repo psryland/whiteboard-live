@@ -46,7 +46,14 @@ function Load_State(): CanvasState & { max_z: number } {
 			// Migrate connectors missing arrow_type
 			const connectors = (parsed.connectors || []).map((c: any) => ({ arrow_type: 'forward' as const, routing: 'ortho' as const, z_index: c.z_index ?? ++z, ...c }));
 			const freehand_paths = (parsed.freehand_paths || []).map((f: any) => ({ z_index: f.z_index ?? ++z, ...f }));
-			return { shapes, connectors, freehand_paths, max_z: z };
+
+			// Find the actual maximum z_index across all elements
+			const max_z = Math.max(z,
+				...shapes.map((s: any) => s.z_index ?? 0),
+				...connectors.map((c: any) => c.z_index ?? 0),
+				...freehand_paths.map((f: any) => f.z_index ?? 0),
+			);
+			return { shapes, connectors, freehand_paths, max_z };
 		}
 	} catch { /* ignore */ }
 	return { shapes: [], connectors: [], freehand_paths: [], max_z: 0 };
@@ -1031,6 +1038,13 @@ export function Canvas() {
 		set_freehand_paths(state.freehand_paths || []);
 		set_selected_ids(new Set());
 		undo_mgr.Clear();
+		// Reset z_counter to the max z_index in the loaded state
+		const max_z = Math.max(0,
+			...(state.shapes || []).map(s => s.z_index ?? 0),
+			...(state.connectors || []).map(c => c.z_index ?? 0),
+			...(state.freehand_paths || []).map(f => f.z_index ?? 0),
+		);
+		z_counter.current = max_z;
 	}, [undo_mgr]);
 
 	const Handle_Clear_Canvas = useCallback(() => {
