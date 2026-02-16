@@ -13,7 +13,8 @@ export interface GraphAuth {
 
 /**
  * Hook providing Graph API token acquisition.
- * Tries silent acquisition first, falls back to popup if needed.
+ * Uses redirect flow for sign-in (more reliable than popup across browsers).
+ * Uses silent acquisition for subsequent token requests.
  */
 export function useGraphToken(): GraphAuth {
 	const { instance, accounts } = useMsal();
@@ -33,14 +34,9 @@ export function useGraphToken(): GraphAuth {
 			return result.accessToken;
 		} catch (err) {
 			if (err instanceof InteractionRequiredAuthError) {
-				try {
-					const result = await instance.acquireTokenPopup({
-						scopes: login_scopes,
-					});
-					return result.accessToken;
-				} catch {
-					return null;
-				}
+				// Redirect for re-auth
+				await instance.acquireTokenRedirect({ scopes: login_scopes });
+				return null;
 			}
 			return null;
 		}
@@ -48,11 +44,12 @@ export function useGraphToken(): GraphAuth {
 
 	const Sign_In = useCallback(async (): Promise<string | null> => {
 		try {
-			const result = await instance.loginPopup({
+			// Use redirect flow — works reliably across all browsers
+			await instance.loginRedirect({
 				scopes: login_scopes,
 			});
-			set_user_name(result.account?.name ?? null);
-			return result.accessToken;
+			// Page will redirect, so this won't return
+			return null;
 		} catch {
 			return null;
 		}
@@ -60,7 +57,7 @@ export function useGraphToken(): GraphAuth {
 
 	const Sign_Out = useCallback(async (): Promise<void> => {
 		try {
-			await instance.logoutPopup();
+			await instance.logoutRedirect();
 			set_user_name(null);
 		} catch {
 			// ignore
