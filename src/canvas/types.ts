@@ -52,6 +52,7 @@ export interface Shape {
 	y: number;
 	width: number;
 	height: number;
+	rotation: number; // degrees
 	text: string;
 	style: ShapeStyle;
 	ports: Port[];

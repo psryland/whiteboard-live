@@ -20,12 +20,15 @@ export function ShapeRenderer({
 	on_pointer_leave,
 	on_double_click,
 }: ShapeRendererProps) {
-	const { x, y, width, height, style, text, type } = shape;
+	const { x, y, width, height, style, text, type, rotation } = shape;
+	const cx = x + width / 2;
+	const cy = y + height / 2;
 
+	// Shape keeps its own colours regardless of selection
 	const outline_props = {
 		fill: style.fill,
-		stroke: is_selected ? '#2196F3' : style.stroke,
-		strokeWidth: is_selected ? style.stroke_width + 1 : style.stroke_width,
+		stroke: style.stroke,
+		strokeWidth: style.stroke_width,
 		cursor: 'pointer' as const,
 	};
 
@@ -36,16 +39,19 @@ export function ShapeRenderer({
 		onDoubleClick: (e: React.MouseEvent) => on_double_click(e, shape),
 	};
 
+	// Apply rotation transform around shape centre
+	const transform = rotation ? `rotate(${rotation}, ${cx}, ${cy})` : undefined;
+
 	return (
-		<g {...group_props} data-shape-id={shape.id}>
-			{/* Shape outline */}
+		<g {...group_props} data-shape-id={shape.id} transform={transform}>
+			{/* Shape outline — always drawn with the shape's own style */}
 			{type === 'rectangle' && (
 				<rect x={x} y={y} width={width} height={height} rx={4} {...outline_props} />
 			)}
 			{type === 'ellipse' && (
 				<ellipse
-					cx={x + width / 2}
-					cy={y + height / 2}
+					cx={cx}
+					cy={cy}
 					rx={width / 2}
 					ry={height / 2}
 					{...outline_props}
@@ -61,8 +67,8 @@ export function ShapeRenderer({
 			{/* Text label */}
 			{text && (
 				<text
-					x={x + width / 2}
-					y={y + height / 2}
+					x={cx}
+					y={cy}
 					textAnchor="middle"
 					dominantBaseline="central"
 					fontSize={style.font_size}
@@ -74,7 +80,7 @@ export function ShapeRenderer({
 				</text>
 			)}
 
-			{/* Selection handles */}
+			{/* Selection UI: dashed border + circular grab handles + rotate handle */}
 			{is_selected && <SelectionHandles x={x} y={y} width={width} height={height} />}
 
 			{/* Port indicators on hover */}
@@ -85,22 +91,24 @@ export function ShapeRenderer({
 	);
 }
 
-// Blue resize handles at corners and edge midpoints
 const HANDLE_CURSORS = ['nw-resize', 'ne-resize', 'se-resize', 'sw-resize', 'n-resize', 'e-resize', 's-resize', 'w-resize'];
+const HANDLE_R = 5;
+const ROTATE_OFFSET = 24; // distance of rotate handle above the shape
 
 function SelectionHandles({ x, y, width, height }: { x: number; y: number; width: number; height: number }) {
-	const handle_size = 7;
-	const hs = handle_size / 2;
 	const points = [
-		{ cx: x, cy: y },
-		{ cx: x + width, cy: y },
-		{ cx: x + width, cy: y + height },
-		{ cx: x, cy: y + height },
-		{ cx: x + width / 2, cy: y },
-		{ cx: x + width, cy: y + height / 2 },
-		{ cx: x + width / 2, cy: y + height },
-		{ cx: x, cy: y + height / 2 },
+		{ cx: x, cy: y },                         // 0 TL
+		{ cx: x + width, cy: y },                  // 1 TR
+		{ cx: x + width, cy: y + height },          // 2 BR
+		{ cx: x, cy: y + height },                  // 3 BL
+		{ cx: x + width / 2, cy: y },               // 4 T
+		{ cx: x + width, cy: y + height / 2 },      // 5 R
+		{ cx: x + width / 2, cy: y + height },       // 6 B
+		{ cx: x, cy: y + height / 2 },               // 7 L
 	];
+
+	const rotate_x = x + width / 2;
+	const rotate_y = y - ROTATE_OFFSET;
 
 	return (
 		<>
@@ -108,21 +116,53 @@ function SelectionHandles({ x, y, width, height }: { x: number; y: number; width
 			<rect
 				x={x} y={y} width={width} height={height}
 				fill="none"
-				stroke="#2196F3"
+				stroke="#00d4ff"
 				strokeWidth={1}
-				strokeDasharray="4 2"
+				strokeDasharray="6 3"
 				pointerEvents="none"
 			/>
-			{/* Corner/edge handles */}
+
+			{/* Line from top-centre to rotate handle */}
+			<line
+				x1={x + width / 2} y1={y}
+				x2={rotate_x} y2={rotate_y}
+				stroke="#00d4ff"
+				strokeWidth={1}
+				pointerEvents="none"
+			/>
+
+			{/* Rotate handle */}
+			<circle
+				cx={rotate_x}
+				cy={rotate_y}
+				r={HANDLE_R + 1}
+				fill="white"
+				stroke="#00d4ff"
+				strokeWidth={1.5}
+				style={{ cursor: 'grab' }}
+				data-rotate-handle="true"
+			/>
+			{/* Rotate icon (↻ arrow) */}
+			<text
+				x={rotate_x}
+				y={rotate_y + 0.5}
+				textAnchor="middle"
+				dominantBaseline="central"
+				fontSize={9}
+				fill="#00d4ff"
+				pointerEvents="none"
+				style={{ userSelect: 'none' }}
+			>↻</text>
+
+			{/* Resize grab handles — circular, cyan, like Draw.io */}
 			{points.map((p, i) => (
-				<rect
+				<circle
 					key={i}
-					x={p.cx - hs}
-					y={p.cy - hs}
-					width={handle_size}
-					height={handle_size}
-					fill="white"
-					stroke="#2196F3"
+					cx={p.cx}
+					cy={p.cy}
+					r={HANDLE_R}
+					fill="#00d4ff"
+					stroke="white"
 					strokeWidth={1.5}
 					data-handle-index={i}
 					style={{ cursor: HANDLE_CURSORS[i] }}

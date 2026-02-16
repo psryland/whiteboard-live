@@ -4,7 +4,7 @@ import type { Shape, ShapeStyle } from './types';
 interface PropertiesPanelProps {
 	selected_shapes: Shape[];
 	on_style_change: (changes: Partial<ShapeStyle>) => void;
-	on_position_change: (changes: { x?: number; y?: number; width?: number; height?: number }) => void;
+	on_position_change: (changes: { x?: number; y?: number; width?: number; height?: number; rotation?: number }) => void;
 	on_text_change: (text: string) => void;
 	on_opacity_change: (opacity: number) => void;
 	on_rounded_change: (rounded: boolean) => void;
@@ -233,7 +233,7 @@ function TextTab({ text, style, on_text_change, on_style_change }: {
 
 function ArrangeTab({ shape, on_position_change }: {
 	shape: Shape;
-	on_position_change: (changes: { x?: number; y?: number; width?: number; height?: number }) => void;
+	on_position_change: (changes: { x?: number; y?: number; width?: number; height?: number; rotation?: number }) => void;
 }) {
 	return (
 		<>
@@ -280,6 +280,19 @@ function ArrangeTab({ shape, on_position_change }: {
 						style={{ ...input_style, width: '100%' }}
 					/>
 				</div>
+			</div>
+
+			<div style={{ ...row_style, marginTop: 8 }}>
+				<label style={label_style}>Rotation</label>
+				<input
+					type="number"
+					value={Math.round(shape.rotation ?? 0)}
+					step={15}
+					onChange={e => on_position_change({ rotation: parseInt(e.target.value) || 0 })}
+					onKeyDown={e => e.stopPropagation()}
+					style={{ ...input_style, width: 64 }}
+				/>
+				<span style={{ fontSize: 11, color: '#999' }}>°</span>
 			</div>
 
 			<div style={{ marginTop: 12, fontSize: 12, color: '#666' }}>

@@ -17,7 +17,9 @@ function Load_State(): CanvasState {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (raw) {
 			const parsed = JSON.parse(raw);
-			return { shapes: parsed.shapes || [], connectors: parsed.connectors || [], freehand_paths: parsed.freehand_paths || [] };
+			// Migrate shapes missing the rotation field
+			const shapes = (parsed.shapes || []).map((s: any) => ({ rotation: 0, ...s }));
+			return { shapes, connectors: parsed.connectors || [], freehand_paths: parsed.freehand_paths || [] };
 		}
 	} catch { /* ignore */ }
 	return { shapes: [], connectors: [], freehand_paths: [] };
@@ -48,7 +50,7 @@ export function Canvas() {
 
 	// Drag state
 	const drag_state = useRef<{
-		type: 'none' | 'pan' | 'move' | 'create' | 'marquee' | 'connector' | 'resize' | 'freehand' | 'laser';
+		type: 'none' | 'pan' | 'move' | 'create' | 'marquee' | 'connector' | 'resize' | 'rotate' | 'freehand' | 'laser';
 		start_canvas: Point;
 		start_screen: Point;
 		start_viewport?: Viewport;
@@ -61,6 +63,10 @@ export function Canvas() {
 		resize_shape_id?: string;
 		resize_handle?: number;
 		resize_original?: { x: number; y: number; width: number; height: number };
+		// Rotate state
+		rotate_shape_id?: string;
+		rotate_start_angle?: number;
+		rotate_original?: number;
 		// Freehand state
 		freehand_points?: Point[];
 		// Laser state
@@ -296,6 +302,7 @@ export function Canvas() {
 					y: canvas_pt.y - 15,
 					width: 100,
 					height: 30,
+					rotation: 0,
 					text: '',
 					style: { ...DEFAULT_STYLE, fill: 'none', stroke: 'none', stroke_width: 0 },
 					ports: Default_Ports(),
@@ -344,6 +351,7 @@ export function Canvas() {
 					y: canvas_pt.y,
 					width: 0,
 					height: 0,
+					rotation: 0,
 					text: '',
 					style: { ...DEFAULT_STYLE },
 					ports: Default_Ports(),
@@ -433,6 +441,21 @@ export function Canvas() {
 			set_shapes(prev => prev.map(s =>
 				s.id === ds.resize_shape_id ? { ...s, x, y, width, height } : s
 			));
+		} else if (ds.type === 'rotate' && ds.rotate_shape_id) {
+			const shape = shapes.find(s => s.id === ds.rotate_shape_id);
+			if (shape) {
+				const cx = shape.x + shape.width / 2;
+				const cy = shape.y + shape.height / 2;
+				const current_angle = Math.atan2(canvas_pt.y - cy, canvas_pt.x - cx) * (180 / Math.PI);
+				let rotation = (ds.rotate_original ?? 0) + (current_angle - (ds.rotate_start_angle ?? 0));
+				// Snap to 15° increments when Shift is held
+				if (e.shiftKey) {
+					rotation = Math.round(rotation / 15) * 15;
+				}
+				set_shapes(prev => prev.map(s =>
+					s.id === ds.rotate_shape_id ? { ...s, rotation } : s
+				));
+			}
 		} else if (ds.type === 'freehand' && ds.freehand_points) {
 			ds.freehand_points.push(canvas_pt);
 			// Live preview by updating freehand paths
@@ -504,6 +527,8 @@ export function Canvas() {
 			// Move complete — nothing special needed
 		} else if (ds.type === 'resize') {
 			// Resize complete
+		} else if (ds.type === 'rotate') {
+			// Rotate complete
 		} else if (ds.type === 'freehand' && ds.freehand_points) {
 			// Finalize freehand path
 			if (ds.freehand_points.length > 1) {
@@ -542,6 +567,23 @@ export function Canvas() {
 				resize_shape_id: shape.id,
 				resize_handle: parseInt(handle_index),
 				resize_original: { x: shape.x, y: shape.y, width: shape.width, height: shape.height },
+			};
+			return;
+		}
+
+		// Check if clicking on the rotate handle
+		if (target.getAttribute('data-rotate-handle') && selected_ids.has(shape.id)) {
+			const cx = shape.x + shape.width / 2;
+			const cy = shape.y + shape.height / 2;
+			const start_angle = Math.atan2(canvas_pt.y - cy, canvas_pt.x - cx) * (180 / Math.PI);
+			Push_Undo();
+			drag_state.current = {
+				type: 'rotate',
+				start_canvas: canvas_pt,
+				start_screen: screen_pt,
+				rotate_shape_id: shape.id,
+				rotate_start_angle: start_angle,
+				rotate_original: shape.rotation ?? 0,
 			};
 			return;
 		}
@@ -645,6 +687,7 @@ export function Canvas() {
 			y: canvas_pt.y - 40,
 			width: 120,
 			height: 80,
+			rotation: 0,
 			text: '',
 			style: { ...DEFAULT_STYLE },
 			ports: Default_Ports(),
@@ -763,7 +806,7 @@ export function Canvas() {
 	const selected_shapes = shapes.filter(s => selected_ids.has(s.id));
 
 	// Properties panel handlers
-	const Handle_Position_Change = useCallback((changes: { x?: number; y?: number; width?: number; height?: number }) => {
+	const Handle_Position_Change = useCallback((changes: { x?: number; y?: number; width?: number; height?: number; rotation?: number }) => {
 		Push_Undo();
 		set_shapes(prev => prev.map(s => {
 			if (!selected_ids.has(s.id)) return s;
@@ -773,6 +816,7 @@ export function Canvas() {
 				...(changes.y !== undefined && { y: changes.y }),
 				...(changes.width !== undefined && { width: changes.width }),
 				...(changes.height !== undefined && { height: changes.height }),
+				...(changes.rotation !== undefined && { rotation: changes.rotation }),
 			};
 		}));
 	}, [selected_ids, Push_Undo]);
