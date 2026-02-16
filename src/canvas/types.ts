@@ -60,6 +60,7 @@ export interface Shape {
 	text: string;
 	style: ShapeStyle;
 	ports: Port[];
+	z_index: number;
 }
 
 // A connector endpoint bound to a shape's port, or a free point
@@ -86,6 +87,7 @@ export interface Connector {
 		stroke: string;
 		stroke_width: number;
 	};
+	z_index: number;
 }
 
 export interface CanvasState {
@@ -109,6 +111,7 @@ export interface FreehandPath {
 		stroke: string;
 		stroke_width: number;
 	};
+	z_index: number;
 }
 
 export interface LaserPoint {

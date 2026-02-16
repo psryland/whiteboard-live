@@ -216,6 +216,16 @@ export function Snap_To_Grid(value: number, grid_size: number = DEFAULT_GRID_SIZ
 	return Math.round(value / grid_size) * grid_size;
 }
 
+// Default bézier control points at 1/3 and 2/3 along the source→target line
+export function Default_Control_Points(source: Point, target: Point): Point[] {
+	const dx = target.x - source.x;
+	const dy = target.y - source.y;
+	return [
+		{ x: source.x + dx * 0.33, y: source.y + dy * 0.33 },
+		{ x: source.x + dx * 0.66, y: source.y + dy * 0.66 },
+	];
+}
+
 // Compute axis-aligned bounding box of a set of points
 export function Freehand_Bounds(points: Point[]): Bounds {
 	if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };

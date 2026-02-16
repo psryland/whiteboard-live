@@ -1,5 +1,5 @@
 import type { Connector, Shape, Point } from './types';
-import { Port_Position } from './helpers';
+import { Port_Position, Default_Control_Points } from './helpers';
 
 interface ConnectorRendererProps {
 	connector: Connector;
@@ -7,9 +7,10 @@ interface ConnectorRendererProps {
 	is_selected: boolean;
 	on_pointer_down: (e: React.PointerEvent, connector: Connector) => void;
 	on_control_point_drag?: (connector_id: string, cp_index: number, e: React.PointerEvent) => void;
+	on_endpoint_drag?: (connector_id: string, end: 'source' | 'target', e: React.PointerEvent) => void;
 }
 
-export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_down, on_control_point_drag }: ConnectorRendererProps) {
+export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_down, on_control_point_drag, on_endpoint_drag }: ConnectorRendererProps) {
 	const source = Resolve_End(connector.source, shapes);
 	const target = Resolve_End(connector.target, shapes);
 
@@ -46,29 +47,24 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 				<path d={d} fill="none" stroke={active_stroke} strokeWidth={active_width} pointerEvents="none" />
 				{target_arrow && <polygon points={Arrow_Points(target_arrow)} fill={active_stroke} pointerEvents="none" />}
 				{source_arrow && <polygon points={Arrow_Points(source_arrow)} fill={active_stroke} pointerEvents="none" />}
-				{/* Control point handles when selected */}
+				{/* Control point + endpoint handles when selected */}
 				{is_selected && (
 					<>
-						{/* Tangent lines from endpoints to control points */}
 						<line x1={source.x} y1={source.y} x2={cp[0].x} y2={cp[0].y}
 							stroke="#aaa" strokeWidth={1} strokeDasharray="3 2" pointerEvents="none" />
 						<line x1={target.x} y1={target.y} x2={cp[1].x} y2={cp[1].y}
 							stroke="#aaa" strokeWidth={1} strokeDasharray="3 2" pointerEvents="none" />
-						{/* Draggable control point circles */}
 						{cp.map((pt, i) => (
 							<circle
 								key={i}
 								cx={pt.x} cy={pt.y} r={5}
 								fill="#fff" stroke="#2196F3" strokeWidth={1.5}
 								style={{ cursor: 'move' }}
-								data-cp-index={i}
-								data-connector-id={connector.id}
-								onPointerDown={(e) => {
-									e.stopPropagation();
-									on_control_point_drag?.(connector.id, i, e);
-								}}
+								onPointerDown={(e) => { e.stopPropagation(); on_control_point_drag?.(connector.id, i, e); }}
 							/>
 						))}
+						<EndpointHandle pt={source} end="source" connector_id={connector.id} on_drag={on_endpoint_drag} />
+						<EndpointHandle pt={target} end="target" connector_id={connector.id} on_drag={on_endpoint_drag} />
 					</>
 				)}
 			</g>
@@ -103,6 +99,12 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 						fill="none" stroke={active_stroke} strokeWidth={active_width} pointerEvents="none" />
 					{target_arrow && <polygon points={Arrow_Points(target_arrow)} fill={active_stroke} pointerEvents="none" />}
 					{source_arrow && <polygon points={Arrow_Points(source_arrow)} fill={active_stroke} pointerEvents="none" />}
+					{is_selected && (
+						<>
+							<EndpointHandle pt={source} end="source" connector_id={connector.id} on_drag={on_endpoint_drag} />
+							<EndpointHandle pt={target} end="target" connector_id={connector.id} on_drag={on_endpoint_drag} />
+						</>
+					)}
 				</g>
 			);
 		}
@@ -124,18 +126,14 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 				stroke={active_stroke} strokeWidth={active_width} pointerEvents="none" />
 			{target_arrow && <polygon points={Arrow_Points(target_arrow)} fill={active_stroke} pointerEvents="none" />}
 			{source_arrow && <polygon points={Arrow_Points(source_arrow)} fill={active_stroke} pointerEvents="none" />}
+			{is_selected && (
+				<>
+					<EndpointHandle pt={source} end="source" connector_id={connector.id} on_drag={on_endpoint_drag} />
+					<EndpointHandle pt={target} end="target" connector_id={connector.id} on_drag={on_endpoint_drag} />
+				</>
+			)}
 		</g>
 	);
-}
-
-// Default control points placed at 1/3 and 2/3 along the line between source and target
-function Default_Control_Points(source: Point, target: Point): Point[] {
-	const dx = target.x - source.x;
-	const dy = target.y - source.y;
-	return [
-		{ x: source.x + dx * 0.33, y: source.y + dy * 0.33 },
-		{ x: source.x + dx * 0.66, y: source.y + dy * 0.66 },
-	];
 }
 
 // Build an L-shaped or S-shaped orthogonal path between two ports
@@ -224,4 +222,25 @@ function Resolve_End(
 		return Port_Position(shape, port);
 	}
 	return { x: end.x, y: end.y };
+}
+
+// Diamond-shaped handle for dragging connector endpoints
+function EndpointHandle({ pt, end, connector_id, on_drag }: {
+	pt: Point;
+	end: 'source' | 'target';
+	connector_id: string;
+	on_drag?: (connector_id: string, end: 'source' | 'target', e: React.PointerEvent) => void;
+}) {
+	const s = 6;
+	const points = `${pt.x},${pt.y - s} ${pt.x + s},${pt.y} ${pt.x},${pt.y + s} ${pt.x - s},${pt.y}`;
+	return (
+		<polygon
+			points={points}
+			fill="#fff"
+			stroke="#ff9800"
+			strokeWidth={1.5}
+			style={{ cursor: 'crosshair' }}
+			onPointerDown={(e) => { e.stopPropagation(); on_drag?.(connector_id, end, e); }}
+		/>
+	);
 }

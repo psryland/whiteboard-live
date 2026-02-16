@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Shape, Connector, CanvasState, ToolType, Viewport, Point, ConnectorEnd, ShapeStyle, FreehandPath, LaserPoint, ToolSettings } from './types';
 import { DEFAULT_STYLE, DEFAULT_TOOL_SETTINGS } from './types';
-import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, DEFAULT_GRID_SIZE, DEFAULT_GRID_MAJOR_MULT, Freehand_Bounds, Simplify_Points, Smooth_Points, Get_Svg_Path_From_Stroke } from './helpers';
+import { Generate_Id, Default_Ports, Screen_To_Canvas, Nearest_Port, Port_Position, Normalise_Bounds, Bounds_Overlap, Shape_Bounds, Snap_To_Grid, DEFAULT_GRID_SIZE, DEFAULT_GRID_MAJOR_MULT, Freehand_Bounds, Simplify_Points, Smooth_Points, Get_Svg_Path_From_Stroke, Default_Control_Points } from './helpers';
 import { getStroke } from 'perfect-freehand';
 import { UndoManager } from './undo';
 import { ShapeRenderer } from './ShapeRenderer';
@@ -12,23 +12,38 @@ import { PropertiesPanel } from './PropertiesPanel';
 
 const STORAGE_KEY = 'whitebored-of-peace';
 
-function Load_State(): CanvasState {
+// Resolve a connector endpoint to an absolute point
+function Resolve_Connector_End(end: ConnectorEnd, shapes: Shape[]): Point {
+	if (end.shape_id && end.port_id) {
+		const shape = shapes.find(s => s.id === end.shape_id);
+		if (shape) {
+			const port = shape.ports.find(p => p.id === end.port_id);
+			if (port) return Port_Position(shape, port);
+		}
+	}
+	return { x: end.x, y: end.y };
+}
+
+function Load_State(): CanvasState & { max_z: number } {
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (raw) {
 			const parsed = JSON.parse(raw);
+			let z = 0;
 			// Migrate shapes missing the rotation field or rounded style
 			const shapes = (parsed.shapes || []).map((s: any) => ({
 				rotation: 0,
+				z_index: s.z_index ?? ++z,
 				...s,
 				style: { rounded: false, opacity: 100, ...s.style },
 			}));
 			// Migrate connectors missing arrow_type
-			const connectors = (parsed.connectors || []).map((c: any) => ({ arrow_type: 'forward' as const, routing: 'ortho' as const, ...c }));
-			return { shapes, connectors, freehand_paths: parsed.freehand_paths || [] };
+			const connectors = (parsed.connectors || []).map((c: any) => ({ arrow_type: 'forward' as const, routing: 'ortho' as const, z_index: c.z_index ?? ++z, ...c }));
+			const freehand_paths = (parsed.freehand_paths || []).map((f: any) => ({ z_index: f.z_index ?? ++z, ...f }));
+			return { shapes, connectors, freehand_paths, max_z: z };
 		}
 	} catch { /* ignore */ }
-	return { shapes: [], connectors: [], freehand_paths: [] };
+	return { shapes: [], connectors: [], freehand_paths: [], max_z: 0 };
 }
 
 function Save_State(state: CanvasState): void {
@@ -42,9 +57,14 @@ export function Canvas() {
 	const undo_mgr = useRef(new UndoManager()).current;
 
 	// Canvas data
-	const [shapes, set_shapes] = useState<Shape[]>(() => Load_State().shapes);
-	const [connectors, set_connectors] = useState<Connector[]>(() => Load_State().connectors);
-	const [freehand_paths, set_freehand_paths] = useState<FreehandPath[]>(() => Load_State().freehand_paths);
+	const initial_state = useRef(Load_State()).current;
+	const [shapes, set_shapes] = useState<Shape[]>(() => initial_state.shapes);
+	const [connectors, set_connectors] = useState<Connector[]>(() => initial_state.connectors);
+	const [freehand_paths, set_freehand_paths] = useState<FreehandPath[]>(() => initial_state.freehand_paths);
+
+	// Global z-index counter — initialised from existing items
+	const z_counter = useRef(initial_state.max_z);
+	function Next_Z(): number { return ++z_counter.current; }
 
 	// Viewport (pan/zoom)
 	const [viewport, set_viewport] = useState<Viewport>({ offset_x: 0, offset_y: 0, zoom: 1 });
@@ -60,7 +80,7 @@ export function Canvas() {
 
 	// Drag state
 	const drag_state = useRef<{
-		type: 'none' | 'pan' | 'move' | 'create' | 'marquee' | 'connector' | 'resize' | 'rotate' | 'freehand' | 'laser' | 'freehand_move' | 'freehand_resize' | 'cp_drag';
+		type: 'none' | 'pan' | 'move' | 'create' | 'marquee' | 'connector' | 'resize' | 'rotate' | 'freehand' | 'laser' | 'freehand_move' | 'freehand_resize' | 'cp_drag' | 'endpoint_drag';
 		start_canvas: Point;
 		start_screen: Point;
 		start_viewport?: Viewport;
@@ -88,6 +108,9 @@ export function Canvas() {
 		// Control point drag state
 		cp_connector_id?: string;
 		cp_index?: number;
+		// Endpoint drag state
+		endpoint_connector_id?: string;
+		endpoint_end?: 'source' | 'target';
 	}>({ type: 'none', start_canvas: { x: 0, y: 0 }, start_screen: { x: 0, y: 0 } });
 
 	// Marquee rectangle (screen coords for overlay display)
@@ -183,7 +206,7 @@ export function Canvas() {
 			if (!selected_ids.has(s.id)) continue;
 			const new_id = Generate_Id('s');
 			id_map.set(s.id, new_id);
-			new_shapes.push({ ...s, id: new_id, x: s.x + 20, y: s.y + 20, ports: Default_Ports() });
+			new_shapes.push({ ...s, id: new_id, x: s.x + 20, y: s.y + 20, ports: Default_Ports(), z_index: Next_Z() });
 		}
 		// Duplicate connectors between selected shapes
 		const new_connectors: Connector[] = [];
@@ -197,6 +220,7 @@ export function Canvas() {
 					id: Generate_Id('c'),
 					source: { ...c.source, shape_id: new_src_id ?? c.source.shape_id },
 					target: { ...c.target, shape_id: new_tgt_id ?? c.target.shape_id },
+					z_index: Next_Z(),
 				});
 			}
 		}
@@ -221,13 +245,14 @@ export function Canvas() {
 		const new_shapes = clipboard.current.shapes.map(s => {
 			const new_id = Generate_Id('s');
 			id_map.set(s.id, new_id);
-			return { ...s, id: new_id, x: s.x + 30, y: s.y + 30, ports: Default_Ports() };
+			return { ...s, id: new_id, x: s.x + 30, y: s.y + 30, ports: Default_Ports(), z_index: Next_Z() };
 		});
 		const new_connectors = clipboard.current.connectors.map(c => ({
 			...c,
 			id: Generate_Id('c'),
 			source: { ...c.source, shape_id: c.source.shape_id ? (id_map.get(c.source.shape_id) ?? c.source.shape_id) : null },
 			target: { ...c.target, shape_id: c.target.shape_id ? (id_map.get(c.target.shape_id) ?? c.target.shape_id) : null },
+			z_index: Next_Z(),
 		}));
 		set_shapes(prev => [...prev, ...new_shapes]);
 		set_connectors(prev => [...prev, ...new_connectors]);
@@ -265,6 +290,7 @@ export function Canvas() {
 			arrow_type: tool_settings.arrow_type,
 			routing: tool_settings.connector_routing,
 			style: { stroke: '#333333', stroke_width: tool_settings.connector_thickness },
+			z_index: Next_Z(),
 		}]);
 	}, [shapes, Push_Undo, tool_settings]);
 
@@ -339,6 +365,7 @@ export function Canvas() {
 					text: '',
 					style: { ...DEFAULT_STYLE, fill: 'none', stroke: 'none', stroke_width: 0, font_size: tool_settings.text_size, text_colour: tool_settings.text_color },
 					ports: Default_Ports(),
+					z_index: Next_Z(),
 				};
 				set_shapes(prev => [...prev, new_shape]);
 				set_selected_ids(new Set([new_shape.id]));
@@ -388,6 +415,7 @@ export function Canvas() {
 					text: '',
 					style: { ...DEFAULT_STYLE, fill: tool_settings.shape_fill, stroke: tool_settings.shape_stroke },
 					ports: Default_Ports(),
+					z_index: Next_Z(),
 				};
 				drag_state.current = {
 					type: 'create',
@@ -438,6 +466,11 @@ export function Canvas() {
 					width: Snap_To_Grid(bounds.width, grid_size),
 					height: Snap_To_Grid(bounds.height, grid_size),
 				};
+			}
+			// Shift constrains to square
+			if (e.shiftKey) {
+				const size = Math.max(bounds.width, bounds.height);
+				bounds = { ...bounds, width: size, height: size };
 			}
 			ds.creating_shape = {
 				...ds.creating_shape,
@@ -528,7 +561,7 @@ export function Canvas() {
 			// Live preview by updating freehand paths
 			set_freehand_paths(prev => {
 				const without = prev.filter(p => p.id !== '__drawing__');
-				return [...without, { id: '__drawing__', points: [...ds.freehand_points!], style: { stroke: tool_settings.pen_color, stroke_width: tool_settings.pen_size } }];
+				return [...without, { id: '__drawing__', points: [...ds.freehand_points!], style: { stroke: tool_settings.pen_color, stroke_width: tool_settings.pen_size }, z_index: Number.MAX_SAFE_INTEGER }];
 			});
 		} else if (ds.type === 'freehand_move' && ds.freehand_path_origins) {
 			ds.moved = true;
@@ -573,10 +606,24 @@ export function Canvas() {
 			// Drag a bézier control point to the current canvas position
 			set_connectors(prev => prev.map(c => {
 				if (c.id !== ds.cp_connector_id) return c;
-				const cp = [...(c.control_points || [{ x: 0, y: 0 }, { x: 0, y: 0 }])];
+				const source_pt = Resolve_Connector_End(c.source, shapes);
+				const target_pt = Resolve_Connector_End(c.target, shapes);
+				const cp = [...(c.control_points || Default_Control_Points(source_pt, target_pt))];
 				cp[ds.cp_index!] = canvas_pt;
 				return { ...c, control_points: cp };
 			}));
+		} else if (ds.type === 'endpoint_drag' && ds.endpoint_connector_id) {
+			// Show preview line while dragging endpoint
+			const conn = connectors.find(c => c.id === ds.endpoint_connector_id);
+			if (conn) {
+				const other_end = ds.endpoint_end === 'source' ? conn.target : conn.source;
+				const other_pt = Resolve_Connector_End(other_end, shapes);
+				if (ds.endpoint_end === 'source') {
+					set_connector_preview({ from: canvas_pt, to: other_pt });
+				} else {
+					set_connector_preview({ from: other_pt, to: canvas_pt });
+				}
+			}
 		} else if (ds.type === 'laser' && ds.laser_points) {
 			const now = Date.now();
 			ds.laser_points.push({ ...canvas_pt, timestamp: now });
@@ -642,6 +689,7 @@ export function Canvas() {
 					arrow_type: tool_settings.arrow_type,
 					routing: tool_settings.connector_routing,
 					style: { stroke: '#333333', stroke_width: tool_settings.connector_thickness },
+					z_index: Next_Z(),
 				};
 				set_connectors(prev => [...prev, new_connector]);
 			}
@@ -660,6 +708,7 @@ export function Canvas() {
 					id: Generate_Id('f'),
 					points: smoothed,
 					style: { stroke: tool_settings.pen_color, stroke_width: tool_settings.pen_size },
+					z_index: Next_Z(),
 				};
 				set_freehand_paths(prev => [...prev.filter(p => p.id !== '__drawing__'), path]);
 			} else {
@@ -671,6 +720,22 @@ export function Canvas() {
 			// Resize complete
 		} else if (ds.type === 'cp_drag') {
 			// Control point drag complete
+		} else if (ds.type === 'endpoint_drag' && ds.endpoint_connector_id) {
+			set_connector_preview(null);
+			const canvas_pt = Screen_To_Canvas(Get_SVG_Point(e), viewport);
+			// Check if we landed on a shape — snap to nearest port
+			const target_shape = shapes.find(s =>
+				canvas_pt.x >= s.x && canvas_pt.x <= s.x + s.width &&
+				canvas_pt.y >= s.y && canvas_pt.y <= s.y + s.height
+			);
+			const new_end: ConnectorEnd = target_shape
+				? { shape_id: target_shape.id, port_id: Nearest_Port(target_shape, canvas_pt).id, x: 0, y: 0 }
+				: { shape_id: null, port_id: null, x: canvas_pt.x, y: canvas_pt.y };
+			set_connectors(prev => prev.map(c => {
+				if (c.id !== ds.endpoint_connector_id) return c;
+				if (ds.endpoint_end === 'source') return { ...c, source: new_end, control_points: undefined };
+				return { ...c, target: new_end, control_points: undefined };
+			}));
 		} else if (ds.type === 'laser') {
 			// Laser trail fades on its own via animation
 		}
@@ -824,6 +889,7 @@ export function Canvas() {
 			text: '',
 			style: { ...DEFAULT_STYLE, fill: tool_settings.shape_fill, stroke: tool_settings.shape_stroke },
 			ports: Default_Ports(),
+			z_index: Next_Z(),
 		};
 		set_shapes(prev => [...prev, new_shape]);
 		set_selected_ids(new Set([new_shape.id]));
@@ -954,6 +1020,20 @@ export function Canvas() {
 		};
 	}, [viewport, Push_Undo, Get_SVG_Point]);
 
+	const Handle_Endpoint_Drag = useCallback((connector_id: string, end: 'source' | 'target', e: React.PointerEvent) => {
+		const screen_pt = Get_SVG_Point(e);
+		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
+		Push_Undo();
+		drag_state.current = {
+			type: 'endpoint_drag',
+			start_canvas: canvas_pt,
+			start_screen: screen_pt,
+			endpoint_connector_id: connector_id,
+			endpoint_end: end,
+		};
+		set_connector_preview({ from: canvas_pt, to: canvas_pt });
+	}, [viewport, Push_Undo, Get_SVG_Point]);
+
 	// Freehand path click handler
 	const Handle_Freehand_PointerDown = useCallback((e: React.PointerEvent, path_id: string) => {
 		// When drawing or using laser, let the event bubble up to the canvas handler
@@ -1050,37 +1130,56 @@ export function Canvas() {
 
 	const Handle_Z_Order = useCallback((action: 'bring_front' | 'send_back' | 'bring_forward' | 'send_backward') => {
 		Push_Undo();
-		set_shapes(prev => {
-			const selected = prev.filter(s => selected_ids.has(s.id));
-			const rest = prev.filter(s => !selected_ids.has(s.id));
-			switch (action) {
-				case 'bring_front': return [...rest, ...selected];
-				case 'send_back': return [...selected, ...rest];
-				case 'bring_forward': {
-					const result = [...prev];
-					for (const s of selected) {
-						const idx = result.indexOf(s);
-						if (idx < result.length - 1) {
-							result.splice(idx, 1);
-							result.splice(idx + 1, 0, s);
-						}
+
+		// Collect all z_index values across all element types
+		type ZItem = { id: string; z: number };
+		const all_items: ZItem[] = [
+			...shapes.map(s => ({ id: s.id, z: s.z_index ?? 0 })),
+			...connectors.map(c => ({ id: c.id, z: c.z_index ?? 0 })),
+			...freehand_paths.map(f => ({ id: f.id, z: f.z_index ?? 0 })),
+		].sort((a, b) => a.z - b.z);
+
+		const selected_set = selected_ids;
+		const sel = all_items.filter(i => selected_set.has(i.id));
+		const rest = all_items.filter(i => !selected_set.has(i.id));
+
+		let reordered: ZItem[];
+		switch (action) {
+			case 'bring_front': reordered = [...rest, ...sel]; break;
+			case 'send_back': reordered = [...sel, ...rest]; break;
+			case 'bring_forward': {
+				reordered = [...all_items];
+				for (const s of sel) {
+					const idx = reordered.indexOf(s);
+					if (idx < reordered.length - 1) {
+						reordered.splice(idx, 1);
+						reordered.splice(idx + 1, 0, s);
 					}
-					return result;
 				}
-				case 'send_backward': {
-					const result = [...prev];
-					for (const s of [...selected].reverse()) {
-						const idx = result.indexOf(s);
-						if (idx > 0) {
-							result.splice(idx, 1);
-							result.splice(idx - 1, 0, s);
-						}
-					}
-					return result;
-				}
+				break;
 			}
-		});
-	}, [selected_ids, Push_Undo]);
+			case 'send_backward': {
+				reordered = [...all_items];
+				for (const s of [...sel].reverse()) {
+					const idx = reordered.indexOf(s);
+					if (idx > 0) {
+						reordered.splice(idx, 1);
+						reordered.splice(idx - 1, 0, s);
+					}
+				}
+				break;
+			}
+		}
+
+		// Assign new sequential z_index values
+		const z_map = new Map<string, number>();
+		reordered.forEach((item, i) => z_map.set(item.id, i + 1));
+		z_counter.current = reordered.length;
+
+		set_shapes(prev => prev.map(s => ({ ...s, z_index: z_map.get(s.id) ?? s.z_index })));
+		set_connectors(prev => prev.map(c => ({ ...c, z_index: z_map.get(c.id) ?? c.z_index })));
+		set_freehand_paths(prev => prev.map(f => ({ ...f, z_index: z_map.get(f.id) ?? f.z_index })));
+	}, [selected_ids, shapes, connectors, freehand_paths, Push_Undo]);
 
 	return (
 		<div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#f8f9fa' }}>
@@ -1160,31 +1259,101 @@ export function Canvas() {
 
 				{/* Transformed canvas content */}
 				<g transform={`translate(${viewport.offset_x}, ${viewport.offset_y}) scale(${viewport.zoom})`}>
-					{/* Connectors behind shapes */}
-					{connectors.map(c => (
-						<ConnectorRenderer
-							key={c.id}
-							connector={c}
-							shapes={shapes}
-							is_selected={selected_ids.has(c.id)}
-							on_pointer_down={Handle_Connector_PointerDown}
-							on_control_point_drag={Handle_Control_Point_Drag}
-						/>
-					))}
+					{/* All elements rendered in z-index order */}
+					{(() => {
+						type RenderItem =
+							| { kind: 'shape'; item: Shape }
+							| { kind: 'connector'; item: Connector }
+							| { kind: 'freehand'; item: FreehandPath };
+						const items: RenderItem[] = [
+							...shapes.map(s => ({ kind: 'shape' as const, item: s })),
+							...connectors.map(c => ({ kind: 'connector' as const, item: c })),
+							...freehand_paths.map(f => ({ kind: 'freehand' as const, item: f })),
+						];
+						items.sort((a, b) => (a.item.z_index ?? 0) - (b.item.z_index ?? 0));
 
-					{/* Shapes */}
-					{shapes.map(s => (
-						<ShapeRenderer
-							key={s.id}
-							shape={s}
-							is_selected={selected_ids.has(s.id)}
-							is_hovered={hovered_shape_id === s.id}
-							on_pointer_down={Handle_Shape_PointerDown}
-							on_pointer_enter={(shape) => set_hovered_shape_id(shape.id)}
-							on_pointer_leave={() => set_hovered_shape_id(null)}
-							on_double_click={Handle_Shape_DoubleClick}
-						/>
-					))}
+						return items.map(entry => {
+							if (entry.kind === 'connector') {
+								const c = entry.item;
+								return (
+									<ConnectorRenderer
+										key={c.id}
+										connector={c}
+										shapes={shapes}
+										is_selected={selected_ids.has(c.id)}
+										on_pointer_down={Handle_Connector_PointerDown}
+										on_control_point_drag={Handle_Control_Point_Drag}
+										on_endpoint_drag={Handle_Endpoint_Drag}
+									/>
+								);
+							}
+							if (entry.kind === 'shape') {
+								const s = entry.item;
+								return (
+									<ShapeRenderer
+										key={s.id}
+										shape={s}
+										is_selected={selected_ids.has(s.id)}
+										is_hovered={hovered_shape_id === s.id}
+										on_pointer_down={Handle_Shape_PointerDown}
+										on_pointer_enter={(shape) => set_hovered_shape_id(shape.id)}
+										on_pointer_leave={() => set_hovered_shape_id(null)}
+										on_double_click={Handle_Shape_DoubleClick}
+									/>
+								);
+							}
+							if (entry.kind === 'freehand') {
+								const path = entry.item;
+								const is_sel = selected_ids.has(path.id);
+								const is_drawing = path.id === '__drawing__';
+								const stroke_points = getStroke(path.points, {
+									size: path.style.stroke_width * 2,
+									thinning: 0.5,
+									smoothing: 0.5,
+									streamline: 0.5,
+									simulatePressure: true,
+									start: { cap: true, taper: 0 },
+									end: { cap: true, taper: is_drawing ? 0 : 20 },
+									last: !is_drawing,
+								});
+								const path_d = Get_Svg_Path_From_Stroke(stroke_points);
+								const bounds = is_sel ? Freehand_Bounds(path.points) : null;
+								const pts_str = path.points.map(p => `${p.x},${p.y}`).join(' ');
+
+								return (
+									<g key={path.id} onPointerDown={(e) => Handle_Freehand_PointerDown(e, path.id)}>
+										<polyline points={pts_str} fill="none" stroke="transparent" strokeWidth={16} style={{ cursor: 'pointer' }} />
+										{is_sel && bounds && bounds.width > 0 && bounds.height > 0 && (
+											<>
+												<rect
+													x={bounds.x - 4} y={bounds.y - 4}
+													width={bounds.width + 8} height={bounds.height + 8}
+													fill="none" stroke="#00d4ff" strokeWidth={1}
+													strokeDasharray="4 2" pointerEvents="none" opacity={0.6}
+												/>
+												{[
+													{ hx: bounds.x - 4, hy: bounds.y - 4, idx: 0, cursor: 'nwse-resize' },
+													{ hx: bounds.x + bounds.width + 4, hy: bounds.y - 4, idx: 1, cursor: 'nesw-resize' },
+													{ hx: bounds.x + bounds.width + 4, hy: bounds.y + bounds.height + 4, idx: 2, cursor: 'nwse-resize' },
+													{ hx: bounds.x - 4, hy: bounds.y + bounds.height + 4, idx: 3, cursor: 'nesw-resize' },
+												].map(h => (
+													<circle
+														key={h.idx}
+														cx={h.hx} cy={h.hy} r={4}
+														fill="#fff" stroke="#00d4ff" strokeWidth={1.5}
+														style={{ cursor: h.cursor }}
+														data-freehand-handle={h.idx}
+													/>
+												))}
+											</>
+										)}
+										<path d={path_d} fill={path.style.stroke} stroke="none" pointerEvents="none" />
+									</g>
+								);
+							}
+							return null;
+						});
+					})()}
 
 					{/* Connector preview while dragging */}
 					{connector_preview && (
@@ -1197,73 +1366,6 @@ export function Canvas() {
 							pointerEvents="none"
 						/>
 					)}
-
-					{/* Freehand paths */}
-					{freehand_paths.map(path => {
-						const is_sel = selected_ids.has(path.id);
-						const is_drawing = path.id === '__drawing__';
-
-						// Generate the pressure-sensitive stroke outline
-						const stroke_points = getStroke(path.points, {
-							size: path.style.stroke_width * 2,
-							thinning: 0.5,
-							smoothing: 0.5,
-							streamline: 0.5,
-							simulatePressure: true,
-							start: { cap: true, taper: 0 },
-							end: { cap: true, taper: is_drawing ? 0 : 20 },
-							last: !is_drawing,
-						});
-						const path_d = Get_Svg_Path_From_Stroke(stroke_points);
-						const bounds = is_sel ? Freehand_Bounds(path.points) : null;
-
-						// Also create a simple polyline for the hit area
-						const pts_str = path.points.map(p => `${p.x},${p.y}`).join(' ');
-
-						return (
-							<g key={path.id} onPointerDown={(e) => Handle_Freehand_PointerDown(e, path.id)}>
-								{/* Fat invisible hit area */}
-								<polyline
-									points={pts_str}
-									fill="none" stroke="transparent" strokeWidth={16}
-									style={{ cursor: 'pointer' }}
-								/>
-								{/* Selection bounding box + handles */}
-								{is_sel && bounds && bounds.width > 0 && bounds.height > 0 && (
-									<>
-										<rect
-											x={bounds.x - 4} y={bounds.y - 4}
-											width={bounds.width + 8} height={bounds.height + 8}
-											fill="none" stroke="#00d4ff" strokeWidth={1}
-											strokeDasharray="4 2" pointerEvents="none" opacity={0.6}
-										/>
-										{/* Corner resize handles */}
-										{[
-											{ hx: bounds.x - 4, hy: bounds.y - 4, idx: 0, cursor: 'nwse-resize' },
-											{ hx: bounds.x + bounds.width + 4, hy: bounds.y - 4, idx: 1, cursor: 'nesw-resize' },
-											{ hx: bounds.x + bounds.width + 4, hy: bounds.y + bounds.height + 4, idx: 2, cursor: 'nwse-resize' },
-											{ hx: bounds.x - 4, hy: bounds.y + bounds.height + 4, idx: 3, cursor: 'nesw-resize' },
-										].map(h => (
-											<circle
-												key={h.idx}
-												cx={h.hx} cy={h.hy} r={4}
-												fill="#fff" stroke="#00d4ff" strokeWidth={1.5}
-												style={{ cursor: h.cursor }}
-												data-freehand-handle={h.idx}
-											/>
-										))}
-									</>
-								)}
-								{/* Pressure-sensitive filled stroke */}
-								<path
-									d={path_d}
-									fill={path.style.stroke}
-									stroke="none"
-									pointerEvents="none"
-								/>
-							</g>
-						);
-					})}
 
 					{/* Laser pointer trail */}
 					{laser_trail.length > 0 && (() => {
