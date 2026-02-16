@@ -8,15 +8,19 @@ import { Canvas } from './canvas/Canvas';
 
 const msal_instance = new PublicClientApplication(msal_config);
 
-// Initialize MSAL and handle popup auth response.
-// When this page loads in a popup after auth redirect, handleRedirectPromise
-// processes the auth code and MSAL closes the popup automatically.
-const msal_init = msal_instance.initialize().then(() =>
-	msal_instance.handleRedirectPromise().catch(() => null)
-);
+// Detect if this page loaded in an MSAL auth popup by checking the hash for
+// auth response parameters. The state param contains interactionType:"popup".
+const hash = window.location.hash;
+const is_auth_response = hash.includes('code=') || hash.includes('error=');
 
-// If we're in a popup with an auth response, don't render the full app
-const is_popup_auth = window.opener && (window.location.hash.includes('code=') || window.location.hash.includes('error='));
+// Initialize MSAL. If there's an auth response in the hash, handleRedirectPromise
+// processes it. In a popup, MSAL will close the popup after processing.
+const msal_init = msal_instance.initialize().then(() => {
+	if (is_auth_response) {
+		return msal_instance.handleRedirectPromise().catch(() => null);
+	}
+	return null;
+});
 
 // Error boundary to catch and display React rendering errors
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -48,9 +52,9 @@ export function App() {
 		msal_init.then(() => set_msal_ready(true));
 	}, []);
 
-	// Skip Teams SDK init and full rendering if we're in an auth popup
+	// Skip Teams SDK init and full rendering if we're handling an auth response
 	useEffect(() => {
-		if (is_popup_auth) return;
+		if (is_auth_response) return;
 		async function Init_Teams() {
 			try {
 				const timeout = new Promise<never>((_, reject) =>
@@ -88,8 +92,8 @@ export function App() {
 
 	if (!msal_ready) return null;
 
-	// Auth popup — just show a loading message while MSAL processes the response
-	if (is_popup_auth) return <div style={{ padding: 20, textAlign: 'center' }}>Signing in...</div>;
+	// Auth response page — show loading while MSAL processes, then close popup
+	if (is_auth_response) return <div style={{ padding: 20, textAlign: 'center' }}>Signing in...</div>;
 
 	if (is_config_frame) {
 		return (
