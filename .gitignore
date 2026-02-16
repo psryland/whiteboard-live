@@ -8,3 +8,5 @@ appPackage/app.zip
 certs/
 debug-azure.png
 debug-screenshot.png
+
+.env
