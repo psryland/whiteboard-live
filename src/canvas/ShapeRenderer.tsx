@@ -156,7 +156,7 @@ function SelectionHandles({ x, y, width, height }: { x: number; y: number; width
 				style={{ userSelect: 'none' }}
 			>↻</text>
 
-			{/* Resize grab handles — circular, cyan, like Draw.io */}
+			{/* Resize grab handles — circular, cyan */}
 			{points.map((p, i) => (
 				<circle
 					key={i}

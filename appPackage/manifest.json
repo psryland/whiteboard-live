@@ -15,7 +15,7 @@
 	},
 	"description": {
 		"short": "Infinite canvas whiteboard with diagramming tools",
-		"full": "A Draw.io-style infinite canvas whiteboard for Microsoft Teams. Create diagrams, flowcharts, and sketches collaboratively in real-time."
+		"full": "An infinite canvas whiteboard for Microsoft Teams. Create diagrams, flowcharts, and sketches collaboratively in real-time."
 	},
 	"icons": {
 		"outline": "outline.png",
@@ -36,7 +36,7 @@
 			"configurationUrl": "https://yellow-plant-01a814f00.6.azurestaticapps.net/index.html",
 			"canUpdateConfiguration": false,
 			"scopes": ["team", "groupChat"],
-			"context": ["channelTab", "meetingChatTab", "meetingDetailsTab", "meetingSidePanel", "meetingStage"]
+			"context": ["channelTab"]
 		}
 	],
 	"permissions": ["identity"],

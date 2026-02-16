@@ -1,6 +1,6 @@
 # Whiteboard Live
 
-A Draw.io-style infinite canvas whiteboard/diagramming tool for Microsoft Teams, built with React + TypeScript + custom SVG canvas engine.
+An infinite canvas whiteboard/diagramming tool for Microsoft Teams, built with React + TypeScript + custom SVG canvas engine.
 
 Developed by [Rylogic](https://www.rylogic.co.nz).
 

@@ -1,7 +1,7 @@
 {
 	"name": "whiteboard-live",
 	"version": "1.0.0",
-	"description": "Whiteboard Live - A Draw.io-style infinite canvas whiteboard for Microsoft Teams",
+	"description": "Whiteboard Live - An infinite canvas whiteboard for Microsoft Teams",
 	"author": "Rylogic <https://www.rylogic.co.nz>",
 	"license": "MIT",
 	"homepage": "https://github.com/psryland/whiteboard-live",
