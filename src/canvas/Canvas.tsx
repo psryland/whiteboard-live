@@ -783,7 +783,22 @@ export function Canvas() {
 			// Control point drag complete
 		} else if (ds.type === 'endpoint_drag' && ds.endpoint_connector_id) {
 			set_hovered_shape_id(null);
-			// The control points were already translated during the drag — just keep them
+			// If snapped to a shape port, recalculate the dragged end's CP to be perpendicular
+			set_connectors(prev => prev.map(c => {
+				if (c.id !== ds.endpoint_connector_id) return c;
+				const end = ds.endpoint_end === 'source' ? c.source : c.target;
+				if (!end.shape_id || !end.port_id) return c; // free-floating — keep translated CPs
+
+				const src_pt = Resolve_Connector_End(c.source, shapes);
+				const tgt_pt = Resolve_Connector_End(c.target, shapes);
+				const src_side = Resolve_Port_Side_For_End(c.source, shapes);
+				const tgt_side = Resolve_Port_Side_For_End(c.target, shapes);
+				const defaults = Default_Control_Points(src_pt, tgt_pt, src_side, tgt_side);
+				const cp = [...(c.control_points || defaults)];
+				const cp_index = ds.endpoint_end === 'source' ? 0 : 1;
+				cp[cp_index] = defaults[cp_index]; // perpendicular to the snapped port
+				return { ...c, control_points: cp };
+			}));
 		} else if (ds.type === 'laser') {
 			// Laser trail fades on its own via animation
 		}
