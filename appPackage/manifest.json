@@ -1,21 +1,21 @@
 {
-	"$schema": "https://developer.microsoft.com/json-schemas/teams/v1.25/MicrosoftTeams.schema.json",
-	"manifestVersion": "1.25",
-	"version": "1.0.0",
-	"id": "${{TEAMS_APP_ID}}",
+	"$schema": "https://developer.microsoft.com/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+	"manifestVersion": "1.17",
+	"version": "1.0.6",
+	"id": "3b60a7e6-440e-4777-a769-c4c4c3f2e244",
 	"developer": {
-		"name": "Teams Whiteboard",
+		"name": "Whitebored of Peace",
 		"websiteUrl": "https://localhost:53000",
 		"privacyUrl": "https://localhost:53000/privacy",
 		"termsOfUseUrl": "https://localhost:53000/terms"
 	},
 	"name": {
-		"short": "Whiteboard",
-		"full": "Teams Whiteboard — Draw.io-style Diagramming"
+		"short": "Whitebored of Peace",
+		"full": "Whitebored of Peace - Diagramming Tool"
 	},
 	"description": {
 		"short": "Infinite canvas whiteboard with diagramming tools",
-		"full": "A Draw.io-style infinite canvas whiteboard for Microsoft Teams. Create diagrams, flowcharts, and sketches collaboratively in real-time during calls or on your own."
+		"full": "A Draw.io-style infinite canvas whiteboard for Microsoft Teams. Create diagrams, flowcharts, and sketches collaboratively in real-time."
 	},
 	"icons": {
 		"outline": "outline.png",
@@ -26,25 +26,13 @@
 		{
 			"entityId": "whiteboard",
 			"name": "Whiteboard",
-			"contentUrl": "${{TAB_ENDPOINT}}/index.html",
-			"websiteUrl": "${{TAB_ENDPOINT}}/index.html",
-			"scopes": ["personal", "groupChat", "team"]
+			"contentUrl": "https://localhost:53000/index.html",
+			"websiteUrl": "https://localhost:53000/index.html",
+			"scopes": ["personal"]
 		}
 	],
-	"configurableTabs": [
-		{
-			"configurationUrl": "${{TAB_ENDPOINT}}/index.html",
-			"canUpdateConfiguration": true,
-			"scopes": ["team", "groupChat"],
-			"context": ["channelTab", "privateChatTab", "meetingChatTab", "meetingSidePanel", "meetingStage"]
-		}
-	],
-	"permissions": ["identity", "messageTeamMembers"],
+	"permissions": ["identity"],
 	"validDomains": [
-		"${{TAB_DOMAIN}}"
-	],
-	"webApplicationInfo": {
-		"id": "${{AAD_APP_CLIENT_ID}}",
-		"resource": "api://${{TAB_DOMAIN}}/${{AAD_APP_CLIENT_ID}}"
-	}
+		"localhost"
+	]
 }

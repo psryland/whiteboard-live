@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { app, pages } from '@microsoft/teams-js';
+import { app } from '@microsoft/teams-js';
 import { FluentProvider, webDarkTheme, webLightTheme, teamsHighContrastTheme } from '@fluentui/react-components';
 import { Whiteboard } from './components/Whiteboard';
 
@@ -21,7 +21,12 @@ export function App() {
 	useEffect(() => {
 		async function Init_Teams() {
 			try {
-				await app.initialize();
+				// Race against a timeout — Teams SDK can hang if not in an iframe
+				const timeout = new Promise<never>((_, reject) =>
+					setTimeout(() => reject(new Error('Teams SDK timeout')), 3000)
+				);
+				await Promise.race([app.initialize(), timeout]);
+
 				set_in_teams(true);
 
 				const context = await app.getContext();
@@ -30,20 +35,15 @@ export function App() {
 					set_theme_name(teams_theme);
 				}
 
-				// Listen for theme changes
 				app.registerOnThemeChangeHandler((new_theme: string) => {
 					set_theme_name(new_theme as ThemeName);
 				});
 
-				// Notify Teams that the app has loaded
-				pages.appButton?.onClick(() => {});
 				app.notifySuccess();
 			}
 			catch {
-				// Not running in Teams — standalone mode
+				// Not running in Teams or SDK timed out — standalone mode
 				set_in_teams(false);
-
-				// Respect system preference when standalone
 				const prefers_dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 				set_theme_name(prefers_dark ? 'dark' : 'default');
 			}
@@ -57,8 +57,8 @@ export function App() {
 
 	if (!is_initialized) {
 		return (
-			<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#1b1b1b', color: '#e0e0e0' }}>
-				Loading whiteboard...
+			<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+				<p>Loading whiteboard...</p>
 			</div>
 		);
 	}
@@ -68,7 +68,7 @@ export function App() {
 	const tldraw_theme = 'light' as const;
 
 	return (
-		<FluentProvider theme={fluent_theme} style={{ height: '100%' }}>
+		<FluentProvider theme={fluent_theme} style={{ position: 'fixed', inset: 0 }}>
 			<Whiteboard
 				tldraw_theme={tldraw_theme}
 				is_in_teams={is_in_teams}

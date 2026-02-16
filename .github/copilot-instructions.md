@@ -1,4 +1,4 @@
-# Teams Whiteboard — Copilot Instructions
+# Whitebored of Peace — Copilot Instructions
 
 ## Build & Run
 

@@ -4,3 +4,5 @@ dist/
 .env.*.local
 *.log
 appPackage/build/
+appPackage/app.zip
+certs/

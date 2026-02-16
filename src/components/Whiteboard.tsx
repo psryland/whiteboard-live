@@ -17,7 +17,7 @@ export function Whiteboard({ tldraw_theme }: WhiteboardProps) {
 	return (
 		<div className="whiteboard-container">
 			<Tldraw
-				persistenceKey="teams-whiteboard"
+				persistenceKey="whitebored-of-peace"
 				components={custom_components}
 				inferDarkMode={false}
 				options={{
