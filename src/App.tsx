@@ -8,12 +8,8 @@ import { Canvas } from './canvas/Canvas';
 
 const msal_instance = new PublicClientApplication(msal_config);
 
-// Initialize MSAL and handle any pending popup/redirect auth responses.
-// In the popup window, handleRedirectPromise processes the auth code and
-// MSAL automatically closes the popup. This must run before React renders.
-const msal_init = msal_instance.initialize().then(() =>
-	msal_instance.handleRedirectPromise()
-);
+// Initialize MSAL before any auth calls
+const msal_init = msal_instance.initialize();
 
 // Error boundary to catch and display React rendering errors
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
