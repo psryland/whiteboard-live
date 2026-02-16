@@ -1,4 +1,4 @@
-# Whitebored of Peace — Copilot Instructions
+# Whiteboard Live — Copilot Instructions
 
 ## Build & Run
 

@@ -47,7 +47,7 @@ export function App() {
 							contentUrl: `${base_url}/index.html`,
 							websiteUrl: `${base_url}/index.html`,
 							entityId: 'whiteboard',
-							suggestedDisplayName: 'Whitebored of Peace',
+							suggestedDisplayName: 'Whiteboard Live',
 						});
 						event.notifySuccess();
 					});
@@ -67,7 +67,7 @@ export function App() {
 	if (is_config_frame) {
 		return (
 			<FluentProvider theme={webLightTheme} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
-				<p>Click <strong>Save</strong> to add Whitebored of Peace to this tab.</p>
+				<p>Click <strong>Save</strong> to add Whiteboard Live to this tab.</p>
 			</FluentProvider>
 		);
 	}

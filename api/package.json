@@ -1,5 +1,5 @@
 {
-	"name": "whitebored-api",
+	"name": "whiteboard-live-api",
 	"version": "1.0.0",
 	"dependencies": {
 		"@azure/web-pubsub": "^1.1.0"

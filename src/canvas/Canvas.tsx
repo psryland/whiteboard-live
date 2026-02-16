@@ -12,7 +12,7 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { CollabSession, Generate_Room_Id, Share_Url } from './Collaboration';
 import { RemoteCursors, PresenceAvatars } from './RemoteCursors';
 
-const STORAGE_KEY = 'whitebored-of-peace';
+const STORAGE_KEY = 'whiteboard-live';
 
 // Resolve a connector endpoint to an absolute point
 function Resolve_Connector_End(end: ConnectorEnd, shapes: Shape[]): Point {

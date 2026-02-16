@@ -1,4 +1,4 @@
-# Whitebored of Peace
+# Whiteboard Live
 
 A Draw.io-style infinite canvas whiteboard extension for Microsoft Teams, built with [tldraw](https://tldraw.dev/) + React + TypeScript.
 

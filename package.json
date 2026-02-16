@@ -1,7 +1,7 @@
 {
-	"name": "whitebored-of-peace",
+	"name": "whiteboard-live",
 	"version": "1.0.0",
-	"description": "Whitebored of Peace - A Draw.io-style infinite canvas whiteboard for Microsoft Teams",
+	"description": "Whiteboard Live - A Draw.io-style infinite canvas whiteboard for Microsoft Teams",
 	"private": true,
 	"type": "module",
 	"scripts": {
