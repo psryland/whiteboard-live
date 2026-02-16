@@ -306,6 +306,10 @@ export function Canvas() {
 		if (changes.shape_type) {
 			set_active_tool(changes.shape_type);
 		}
+		// If connector settings changed, activate the arrow tool
+		if (changes.connector_routing !== undefined || changes.arrow_type !== undefined || changes.connector_thickness !== undefined) {
+			set_active_tool('arrow');
+		}
 	}, []);
 
 	// Get SVG-relative mouse position
@@ -676,24 +680,26 @@ export function Canvas() {
 			set_marquee(null);
 		} else if (ds.type === 'connector') {
 			set_connector_preview(null);
-			// Check if we landed on a shape port
 			const canvas_pt = Screen_To_Canvas(Get_SVG_Point(e), viewport);
 			const target_shape = shapes.find(s =>
 				canvas_pt.x >= s.x && canvas_pt.x <= s.x + s.width &&
 				canvas_pt.y >= s.y && canvas_pt.y <= s.y + s.height
 			);
-			if (target_shape && target_shape.id !== ds.connector_source?.shape_id) {
-				const target_port = Nearest_Port(target_shape, canvas_pt);
+
+			// Determine target end — snap to shape port or free point
+			const target_end: ConnectorEnd = target_shape && target_shape.id !== ds.connector_source?.shape_id
+				? { shape_id: target_shape.id, port_id: Nearest_Port(target_shape, canvas_pt).id, x: 0, y: 0 }
+				: { shape_id: null, port_id: null, x: canvas_pt.x, y: canvas_pt.y };
+
+			// Require minimum drag distance to avoid accidental connectors
+			const dx = canvas_pt.x - ds.start_canvas.x;
+			const dy = canvas_pt.y - ds.start_canvas.y;
+			if (Math.hypot(dx, dy) > 5 && !(target_shape && target_shape.id === ds.connector_source?.shape_id)) {
 				Push_Undo();
 				const new_connector: Connector = {
 					id: Generate_Id('c'),
 					source: ds.connector_source!,
-					target: {
-						shape_id: target_shape.id,
-						port_id: target_port.id,
-						x: 0,
-						y: 0,
-					},
+					target: target_end,
 					arrow_type: tool_settings.arrow_type,
 					routing: tool_settings.connector_routing,
 					style: { stroke: '#333333', stroke_width: tool_settings.connector_thickness },
