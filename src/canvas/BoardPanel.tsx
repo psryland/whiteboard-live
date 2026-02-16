@@ -400,10 +400,10 @@ export function BoardPanel({
 					{/* Divider */}
 					<div style={{ borderTop: '1px solid #e0e0e0', margin: '4px 0 8px' }} />
 
-					{/* Cloud sharing placeholder */}
-					<h3 style={heading_style}>Cloud Sharing</h3>
+					{/* Cloud storage placeholder */}
+					<h3 style={heading_style}>Cloud Storage</h3>
 					<div style={{ fontSize: 11, color: '#999', lineHeight: 1.4, padding: '0 2px' }}>
-						☁️ Coming soon — save to OneDrive / SharePoint and share with your team via Microsoft Graph API.
+						☁️ Coming soon — save boards to OneDrive / SharePoint via Microsoft Graph API.
 					</div>
 				</div>
 			)}

@@ -158,6 +158,8 @@ export function Canvas() {
 	const [show_board_panel, set_show_board_panel] = useState(false);
 	const [current_board_id, set_current_board_id] = useState<string | null>(null);
 	const [current_board_name, set_current_board_name] = useState('Untitled Board');
+	const board_name_ref = useRef(current_board_name);
+	board_name_ref.current = current_board_name;
 
 	// Quick-connect: track the first shape for Shift+click connection
 	const quick_connect_source = useRef<string | null>(null);
@@ -227,6 +229,7 @@ export function Canvas() {
 				set_shapes(state.shapes || []);
 				set_connectors(state.connectors || []);
 				set_freehand_paths(state.freehand_paths || []);
+				if (state.board_name) set_current_board_name(state.board_name);
 				const max_z = Math.max(0,
 					...(state.shapes || []).map(s => s.z_index ?? 0),
 					...(state.connectors || []).map(c => c.z_index ?? 0),
@@ -242,7 +245,8 @@ export function Canvas() {
 					else if (payload.kind === 'connector') set_connectors(prev => [...prev, payload.item]);
 					else if (payload.kind === 'freehand') set_freehand_paths(prev => [...prev, payload.item]);
 				} else if (type === 'op_update') {
-					if (payload.kind === 'shape') set_shapes(prev => prev.map(s => s.id === payload.item.id ? payload.item : s));
+					if (payload.kind === 'board_name') set_current_board_name(payload.item);
+					else if (payload.kind === 'shape') set_shapes(prev => prev.map(s => s.id === payload.item.id ? payload.item : s));
 					else if (payload.kind === 'connector') set_connectors(prev => prev.map(c => c.id === payload.item.id ? payload.item : c));
 					else if (payload.kind === 'freehand') set_freehand_paths(prev => prev.map(f => f.id === payload.item.id ? payload.item : f));
 				} else if (type === 'op_delete') {
@@ -252,7 +256,7 @@ export function Canvas() {
 					set_freehand_paths(prev => prev.filter(f => !ids.has(f.id)));
 				}
 			},
-			on_state_requested: () => ({ shapes: shapes_ref.current, connectors: connectors_ref.current, freehand_paths: freehand_ref.current }),
+			on_state_requested: () => ({ shapes: shapes_ref.current, connectors: connectors_ref.current, freehand_paths: freehand_ref.current, board_name: board_name_ref.current }),
 			on_connection_change: (connected) => set_collab_connected(connected),
 		}, is_host);
 
@@ -291,7 +295,7 @@ export function Canvas() {
 	function Broadcast_Add(kind: 'shape' | 'connector' | 'freehand', item: any): void {
 		collab_ref.current?.Send_Operation('op_add', { kind, item });
 	}
-	function Broadcast_Update(kind: 'shape' | 'connector' | 'freehand', item: any): void {
+	function Broadcast_Update(kind: 'shape' | 'connector' | 'freehand' | 'board_name', item: any): void {
 		collab_ref.current?.Send_Operation('op_update', { kind, item });
 	}
 	function Broadcast_Delete(ids: string[]): void {
@@ -1531,7 +1535,7 @@ export function Canvas() {
 				current_board_id={current_board_id}
 				on_board_id_change={set_current_board_id}
 				current_board_name={current_board_name}
-				on_board_name_change={set_current_board_name}
+				on_board_name_change={(name: string) => { set_current_board_name(name); Broadcast_Update('board_name', name); }}
 			/>
 
 			<svg

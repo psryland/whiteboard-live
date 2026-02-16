@@ -94,6 +94,7 @@ export interface CanvasState {
 	shapes: Shape[];
 	connectors: Connector[];
 	freehand_paths: FreehandPath[];
+	board_name?: string;
 }
 
 export type ToolType = 'select' | 'rectangle' | 'ellipse' | 'diamond' | 'text' | 'arrow' | 'freehand' | 'laser';
