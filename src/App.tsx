@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { app } from '@microsoft/teams-js';
+import { app, pages } from '@microsoft/teams-js';
 import { FluentProvider, webDarkTheme, webLightTheme, teamsHighContrastTheme } from '@fluentui/react-components';
 import { Whiteboard } from './components/Whiteboard';
 
@@ -15,6 +15,7 @@ function Get_Fluent_Theme(theme_name: ThemeName) {
 
 export function App() {
 	const [is_initialized, set_initialized] = useState(false);
+	const [is_config_frame, set_config_frame] = useState(false);
 	const [theme_name, set_theme_name] = useState<ThemeName>('dark');
 	const [is_in_teams, set_in_teams] = useState(false);
 
@@ -39,6 +40,23 @@ export function App() {
 					set_theme_name(new_theme as ThemeName);
 				});
 
+				// If Teams opened us as a config frame, register the save handler
+				// and immediately mark as valid so the user can click "Save"
+				if (context.page?.frameContext === 'settings') {
+					set_config_frame(true);
+					const base_url = window.location.origin;
+					pages.config.registerOnSaveHandler((event) => {
+						pages.config.setConfig({
+							contentUrl: `${base_url}/index.html`,
+							websiteUrl: `${base_url}/index.html`,
+							entityId: 'whiteboard',
+							suggestedDisplayName: 'Whitebored of Peace',
+						});
+						event.notifySuccess();
+					});
+					pages.config.setValidityState(true);
+				}
+
 				app.notifySuccess();
 			}
 			catch {
@@ -60,6 +78,16 @@ export function App() {
 			<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
 				<p>Loading whiteboard...</p>
 			</div>
+		);
+	}
+
+	// Config frame — shown when adding the tab to a channel/meeting
+	if (is_config_frame) {
+		const fluent_theme = Get_Fluent_Theme(theme_name);
+		return (
+			<FluentProvider theme={fluent_theme} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+				<p>Click <strong>Save</strong> to add Whitebored of Peace to this tab.</p>
+			</FluentProvider>
 		);
 	}
 
