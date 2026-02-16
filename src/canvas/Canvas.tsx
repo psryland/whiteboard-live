@@ -1253,13 +1253,15 @@ export function Canvas() {
 		set_freehand_paths(state.freehand_paths || []);
 		set_selected_ids(new Set());
 		undo_mgr.Clear();
-		// Reset z_counter to the max z_index in the loaded state
 		const max_z = Math.max(0,
 			...(state.shapes || []).map(s => s.z_index ?? 0),
 			...(state.connectors || []).map(c => c.z_index ?? 0),
 			...(state.freehand_paths || []).map(f => f.z_index ?? 0),
 		);
 		z_counter.current = max_z;
+
+		// Broadcast full state to remote users when switching boards
+		collab_ref.current?.Send_State(state);
 	}, [undo_mgr]);
 
 	const Handle_Clear_Canvas = useCallback(() => {
@@ -1269,6 +1271,7 @@ export function Canvas() {
 		set_connectors([]);
 		set_freehand_paths([]);
 		set_selected_ids(new Set());
+		collab_ref.current?.Send_State({ shapes: [], connectors: [], freehand_paths: [] });
 	}, [Push_Undo]);
 
 	// Control point drag handler for smooth connectors
