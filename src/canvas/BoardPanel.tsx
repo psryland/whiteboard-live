@@ -601,21 +601,18 @@ export function BoardPanel({
 
 					{/* Export / Import */}
 					<h3 style={heading_style}>Export / Import</h3>
-					<div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+					<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 8 }}>
 						{(['svg', 'png', 'json'] as const).map(fmt => (
 							<div key={fmt} style={{ position: 'relative' }}>
 								<button
 									onClick={() => set_export_picker(export_picker === fmt ? null : fmt)}
-									style={action_btn_style}
+									style={export_btn_style}
 								>
-									{fmt === 'svg' ? '📐' : fmt === 'png' ? '🖼' : '📋'} Export {fmt.toUpperCase()} ▾
+									{fmt.toUpperCase()} ▾
 								</button>
 								{export_picker === fmt && (
 									<div style={export_dropdown_style}>
-										<button
-											onClick={() => Handle_Export_Download(fmt)}
-											style={export_option_style}
-										>
+										<button onClick={() => Handle_Export_Download(fmt)} style={export_option_style}>
 											📥 Download
 										</button>
 										<button
@@ -623,6 +620,7 @@ export function BoardPanel({
 											disabled={!graph_auth.is_signed_in}
 											style={{
 												...export_option_style,
+												borderBottom: 'none',
 												opacity: graph_auth.is_signed_in ? 1 : 0.4,
 												cursor: graph_auth.is_signed_in ? 'pointer' : 'default',
 											}}
@@ -634,15 +632,17 @@ export function BoardPanel({
 								)}
 							</div>
 						))}
-						<button onClick={() => file_input_ref.current?.click()} style={action_btn_style}>📂 Import JSON</button>
-						<input
-							ref={file_input_ref}
-							type="file"
-							accept=".json"
-							onChange={Handle_Import_JSON}
-							style={{ display: 'none' }}
-						/>
+						<button onClick={() => file_input_ref.current?.click()} style={export_btn_style}>
+							Import
+						</button>
 					</div>
+					<input
+						ref={file_input_ref}
+						type="file"
+						accept=".json"
+						onChange={Handle_Import_JSON}
+						style={{ display: 'none' }}
+					/>
 
 					{/* Transient message */}
 					{status_message && (
@@ -846,6 +846,19 @@ const picker_btn_style: React.CSSProperties = {
 	fontSize: 11,
 	background: '#fff',
 	border: '1px solid #ddd',
+	borderRadius: 6,
+	cursor: 'pointer',
+	fontFamily: 'inherit',
+	textAlign: 'center',
+};
+
+const export_btn_style: React.CSSProperties = {
+	width: '100%',
+	padding: '6px 4px',
+	fontSize: 11,
+	fontWeight: 500,
+	background: '#f8f9fa',
+	border: '1px solid #e0e0e0',
 	borderRadius: 6,
 	cursor: 'pointer',
 	fontFamily: 'inherit',

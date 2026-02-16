@@ -903,6 +903,16 @@ export function Canvas() {
 					ids.add(fp.id);
 				}
 			}
+			// Also select connectors whose endpoints are within the marquee
+			for (const c of connectors) {
+				const src = Resolve_Connector_End(c.source, shapes);
+				const tgt = Resolve_Connector_End(c.target, shapes);
+				const c_bounds = {
+					x: Math.min(src.x, tgt.x), y: Math.min(src.y, tgt.y),
+					width: Math.abs(tgt.x - src.x) || 1, height: Math.abs(tgt.y - src.y) || 1,
+				};
+				if (Bounds_Overlap(sel_bounds, c_bounds)) ids.add(c.id);
+			}
 			set_selected_ids(ids);
 			set_marquee(null);
 		} else if (ds.type === 'connector') {
@@ -1213,7 +1223,7 @@ export function Canvas() {
 			if (e.ctrlKey || e.metaKey) {
 				if (e.key === 'z') { e.preventDefault(); Do_Undo(); }
 				if (e.key === 'y') { e.preventDefault(); Do_Redo(); }
-				if (e.key === 'a') { e.preventDefault(); set_selected_ids(new Set(shapes.map(s => s.id))); }
+				if (e.key === 'a') { e.preventDefault(); set_selected_ids(new Set([...shapes.map(s => s.id), ...connectors.map(c => c.id), ...freehand_paths.map(f => f.id)])); }
 				if (e.key === 'c') { e.preventDefault(); Copy_Selected(); }
 				if (e.key === 'v') { e.preventDefault(); Paste(); }
 				if (e.key === 'd') { e.preventDefault(); Duplicate_Selected(); }
