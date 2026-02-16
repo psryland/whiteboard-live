@@ -9,8 +9,8 @@ import { ConnectorRenderer } from './ConnectorRenderer';
 import { Toolbar } from './Toolbar';
 import { BoardPanel } from './BoardPanel';
 import { PropertiesPanel } from './PropertiesPanel';
-import { CollabSession, Generate_Room_Id, Share_Url } from './Collaboration';
-import { RemoteCursors, PresenceAvatars } from './RemoteCursors';
+import { CollabSession, Generate_Room_Id } from './Collaboration';
+import { RemoteCursors } from './RemoteCursors';
 
 const STORAGE_KEY = 'whiteboard-live';
 
@@ -1492,33 +1492,7 @@ export function Canvas() {
 				can_undo={undo_mgr.Can_Undo}
 				can_redo={undo_mgr.Can_Redo}
 				has_selection={selected_ids.size > 0}
-			>
-				{/* Collaboration controls in toolbar */}
-				{collab_session && (
-					<PresenceAvatars users={remote_users} self_name={collab_session.User_Name} />
-				)}
-				{!collab_session ? (
-					<button
-						onClick={Handle_Start_Sharing}
-						style={{
-							padding: '6px 14px', borderRadius: 8, border: 'none',
-							background: '#2196F3', color: '#fff', fontSize: 12,
-							fontWeight: 600, cursor: 'pointer', display: 'flex',
-							alignItems: 'center', gap: 6, marginLeft: 8, whiteSpace: 'nowrap',
-						}}
-					>🔗 Share</button>
-				) : (
-					<button
-						onClick={Stop_Collab_Session}
-						style={{
-							padding: '6px 14px', borderRadius: 8, border: 'none',
-							background: collab_connected ? '#4CAF50' : '#ff9800',
-							color: '#fff', fontSize: 12, fontWeight: 600,
-							cursor: 'pointer', marginLeft: 8, whiteSpace: 'nowrap',
-						}}
-					>{collab_connected ? '● Live' : '○ Connecting...'}</button>
-				)}
-			</Toolbar>
+			/>
 
 			<BoardPanel
 				is_open={show_board_panel}
@@ -1758,37 +1732,6 @@ export function Canvas() {
 				</div>
 			)}
 
-			{/* Collab share link panel */}
-			{collab_session && collab_connected && (
-				<div style={{
-					position: 'absolute', top: 56, right: 228, background: '#fff',
-					border: '1px solid #c8e1ff', borderRadius: 10, padding: 10,
-					boxShadow: '0 2px 8px rgba(0,0,0,0.1)', zIndex: 95, width: 240,
-				}} onPointerDown={e => e.stopPropagation()}>
-					<div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-						<div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4CAF50' }} />
-						<span style={{ fontSize: 12, fontWeight: 600, color: '#1565C0' }}>Live Session</span>
-						<span style={{ flex: 1 }} />
-						<button
-							onClick={() => {
-								navigator.clipboard.writeText(Share_Url(collab_session.Room_Id));
-								set_collab_toast('Link copied!');
-							}}
-							style={{
-								padding: '3px 8px', border: '1px solid #c8e1ff', borderRadius: 4,
-								fontSize: 10, cursor: 'pointer', background: '#fff', color: '#1565C0', fontWeight: 600,
-							}}
-						>📋 Copy Link</button>
-					</div>
-					<div style={{ fontSize: 10, color: '#888', wordBreak: 'break-all', marginBottom: 6 }}>
-						{Share_Url(collab_session.Room_Id)}
-					</div>
-					<div style={{ fontSize: 11, color: '#555' }}>
-						{remote_users.length + 1} participant{remote_users.length !== 0 ? 's' : ''}
-					</div>
-				</div>
-			)}
-
 			{/* Text editing overlay */}
 			{editing_shape && (
 				<input
@@ -1831,6 +1774,11 @@ export function Canvas() {
 				on_z_order={Handle_Z_Order}
 				on_connector_change={Handle_Connector_Change}
 				on_freehand_change={Handle_Freehand_Change}
+				collab_session={collab_session}
+				collab_connected={collab_connected}
+				remote_users={remote_users}
+				on_start_sharing={Handle_Start_Sharing}
+				on_stop_sharing={Stop_Collab_Session}
 			/>
 		</div>
 	);

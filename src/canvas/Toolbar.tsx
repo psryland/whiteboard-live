@@ -16,7 +16,6 @@ interface ToolbarProps {
 	can_undo: boolean;
 	can_redo: boolean;
 	has_selection: boolean;
-	children?: React.ReactNode;
 }
 
 const QUICK_COLORS = [
@@ -68,7 +67,6 @@ export function Toolbar({
 	can_undo,
 	can_redo,
 	has_selection,
-	children,
 }: ToolbarProps) {
 	const [open_dropdown, set_open_dropdown] = useState<DropdownId | null>(null);
 	const toolbar_ref = useRef<HTMLDivElement>(null);
@@ -345,17 +343,6 @@ export function Toolbar({
 
 			{/* Delete */}
 			<ToolBtn icon="🗑" label="Delete (Del)" active={false} on_click={on_delete} disabled={!has_selection} />
-
-			{/* Collaboration controls — positioned just left of the properties panel */}
-			{children && (
-				<div style={{
-					position: 'fixed', top: 12, right: 228,
-					display: 'flex', alignItems: 'center', gap: 6,
-					zIndex: 101,
-				}}>
-					{children}
-				</div>
-			)}
 		</div>
 	);
 }

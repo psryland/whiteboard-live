@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import type { Shape, ShapeStyle, Connector, ArrowType, ConnectorRouting, FreehandPath } from './types';
+import type { Shape, ShapeStyle, Connector, ArrowType, ConnectorRouting, FreehandPath, CollabUser } from './types';
+import { PresenceAvatars } from './RemoteCursors';
+import { CollabSession } from './Collaboration';
 
 interface PropertiesPanelProps {
 	selected_shapes: Shape[];
@@ -12,6 +14,11 @@ interface PropertiesPanelProps {
 	on_z_order: (action: 'bring_front' | 'send_back' | 'bring_forward' | 'send_backward') => void;
 	on_connector_change: (changes: Partial<Pick<Connector, 'arrow_type' | 'routing'> & { stroke: string; stroke_width: number }>) => void;
 	on_freehand_change: (changes: Partial<{ stroke: string; stroke_width: number }>) => void;
+	collab_session: CollabSession | null;
+	collab_connected: boolean;
+	remote_users: CollabUser[];
+	on_start_sharing: () => void;
+	on_stop_sharing: () => void;
 }
 
 const COLOUR_PAGES = [
@@ -63,19 +70,62 @@ export function PropertiesPanel({
 	on_z_order,
 	on_connector_change,
 	on_freehand_change,
+	collab_session,
+	collab_connected,
+	remote_users,
+	on_start_sharing,
+	on_stop_sharing,
 }: PropertiesPanelProps) {
 	const [active_tab, set_active_tab] = useState<'style' | 'text' | 'arrange'>('style');
+
+	// Collaboration controls — positioned to overflow left of the panel
+	const collab_controls = (
+		<div style={{
+			position: 'absolute', top: 8, right: '100%', marginRight: 6,
+			display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+		}}>
+			{collab_session && (
+				<PresenceAvatars users={remote_users} self_name={collab_session.User_Name} />
+			)}
+			{!collab_session ? (
+				<button
+					onClick={on_start_sharing}
+					style={{
+						padding: '6px 14px', borderRadius: 8, border: 'none',
+						background: '#2196F3', color: '#fff', fontSize: 12,
+						fontWeight: 600, cursor: 'pointer', display: 'flex',
+						alignItems: 'center', gap: 6,
+						boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+					}}
+				>🔗 Share</button>
+			) : (
+				<button
+					onClick={on_stop_sharing}
+					style={{
+						padding: '6px 14px', borderRadius: 8, border: 'none',
+						background: collab_connected ? '#4CAF50' : '#ff9800',
+						color: '#fff', fontSize: 12, fontWeight: 600,
+						cursor: 'pointer',
+						boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+					}}
+				>{collab_connected ? '● Live' : '○ Connecting...'}</button>
+			)}
+		</div>
+	);
 
 	// Show connector panel if connectors are selected and no shapes/freehand
 	if (selected_connectors.length > 0 && selected_shapes.length === 0 && selected_freehand.length === 0) {
 		return (
-			<div style={panel_style} onPointerDown={e => e.stopPropagation()}>
-				<div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
-					<ConnectorTab
-						connector={selected_connectors[0]}
-						on_connector_change={on_connector_change}
-						on_z_order={on_z_order}
-					/>
+			<div style={panel_wrapper_style}>
+				{collab_controls}
+				<div style={panel_style} onPointerDown={e => e.stopPropagation()}>
+					<div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
+						<ConnectorTab
+							connector={selected_connectors[0]}
+							on_connector_change={on_connector_change}
+							on_z_order={on_z_order}
+						/>
+					</div>
 				</div>
 			</div>
 		);
@@ -84,13 +134,16 @@ export function PropertiesPanel({
 	// Show freehand panel if freehand paths are selected and no shapes/connectors
 	if (selected_freehand.length > 0 && selected_shapes.length === 0 && selected_connectors.length === 0) {
 		return (
-			<div style={panel_style} onPointerDown={e => e.stopPropagation()}>
-				<div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
-					<FreehandTab
-						path={selected_freehand[0]}
-						on_freehand_change={on_freehand_change}
-						on_z_order={on_z_order}
-					/>
+			<div style={panel_wrapper_style}>
+				{collab_controls}
+				<div style={panel_style} onPointerDown={e => e.stopPropagation()}>
+					<div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
+						<FreehandTab
+							path={selected_freehand[0]}
+							on_freehand_change={on_freehand_change}
+							on_z_order={on_z_order}
+						/>
+					</div>
 				</div>
 			</div>
 		);
@@ -98,9 +151,12 @@ export function PropertiesPanel({
 
 	if (selected_shapes.length === 0) {
 		return (
-			<div style={panel_style}>
-				<div style={{ padding: 16, color: '#999', fontSize: 13, textAlign: 'center' }}>
-					Select an element to edit its properties
+			<div style={panel_wrapper_style}>
+				{collab_controls}
+				<div style={panel_style}>
+					<div style={{ padding: 16, color: '#999', fontSize: 13, textAlign: 'center' }}>
+						Select an element to edit its properties
+					</div>
 				</div>
 			</div>
 		);
@@ -110,7 +166,9 @@ export function PropertiesPanel({
 	const style = shape.style;
 
 	return (
-		<div style={panel_style} onPointerDown={e => e.stopPropagation()}>
+		<div style={panel_wrapper_style}>
+			{collab_controls}
+			<div style={panel_style} onPointerDown={e => e.stopPropagation()}>
 			{/* Tabs */}
 			<div style={{ display: 'flex', borderBottom: '1px solid #e0e0e0' }}>
 				{(['style', 'text', 'arrange'] as const).map(tab => (
@@ -162,6 +220,7 @@ export function PropertiesPanel({
 						on_z_order={on_z_order}
 					/>
 				)}
+			</div>
 			</div>
 		</div>
 	);
@@ -611,21 +670,30 @@ function FreehandTab({ path, on_freehand_change, on_z_order }: {
 	);
 }
 
-const panel_style: React.CSSProperties = {
+// Outer wrapper — allows collab controls to overflow left
+const panel_wrapper_style: React.CSSProperties = {
 	position: 'absolute',
 	right: 0,
 	top: 0,
 	bottom: 0,
 	width: 220,
+	zIndex: 90,
+	pointerEvents: 'none',
+};
+
+const panel_style: React.CSSProperties = {
+	position: 'relative',
+	width: '100%',
+	height: '100%',
 	background: '#fff',
 	borderLeft: '1px solid #e0e0e0',
 	display: 'flex',
 	flexDirection: 'column',
-	zIndex: 90,
 	boxShadow: '-2px 0 8px rgba(0,0,0,0.05)',
 	overflowY: 'auto',
 	overflowX: 'hidden',
 	fontFamily: 'inherit',
+	pointerEvents: 'auto',
 };
 
 const row_style: React.CSSProperties = {
