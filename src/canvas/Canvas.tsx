@@ -302,13 +302,17 @@ export function Canvas() {
 
 	const Handle_Tool_Settings_Change = useCallback((changes: Partial<ToolSettings>) => {
 		set_tool_settings(prev => ({ ...prev, ...changes }));
-		// If shape_type changed, also change active tool
+		// Activate the corresponding tool when its settings change
 		if (changes.shape_type) {
 			set_active_tool(changes.shape_type);
-		}
-		// If connector settings changed, activate the arrow tool
-		if (changes.connector_routing !== undefined || changes.arrow_type !== undefined || changes.connector_thickness !== undefined) {
+		} else if (changes.connector_routing !== undefined || changes.arrow_type !== undefined || changes.connector_thickness !== undefined) {
 			set_active_tool('arrow');
+		} else if (changes.pen_size !== undefined || changes.pen_color !== undefined) {
+			set_active_tool('freehand');
+		} else if (changes.text_size !== undefined || changes.text_color !== undefined) {
+			set_active_tool('text');
+		} else if (changes.laser_color !== undefined) {
+			set_active_tool('laser');
 		}
 	}, []);
 
