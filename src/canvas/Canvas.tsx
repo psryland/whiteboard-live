@@ -24,6 +24,12 @@ function Resolve_Connector_End(end: ConnectorEnd, shapes: Shape[]): Point {
 	return { x: end.x, y: end.y };
 }
 
+function Resolve_Port_Side_For_End(end: ConnectorEnd, shapes: Shape[]): string | undefined {
+	if (!end.shape_id || !end.port_id) return undefined;
+	const shape = shapes.find(s => s.id === end.shape_id);
+	return shape?.ports.find(p => p.id === end.port_id)?.side;
+}
+
 function Load_State(): CanvasState & { max_z: number } {
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
@@ -608,7 +614,9 @@ export function Canvas() {
 				if (c.id !== ds.cp_connector_id) return c;
 				const source_pt = Resolve_Connector_End(c.source, shapes);
 				const target_pt = Resolve_Connector_End(c.target, shapes);
-				const cp = [...(c.control_points || Default_Control_Points(source_pt, target_pt))];
+				const src_side = Resolve_Port_Side_For_End(c.source, shapes);
+				const tgt_side = Resolve_Port_Side_For_End(c.target, shapes);
+				const cp = [...(c.control_points || Default_Control_Points(source_pt, target_pt, src_side, tgt_side))];
 				cp[ds.cp_index!] = canvas_pt;
 				return { ...c, control_points: cp };
 			}));

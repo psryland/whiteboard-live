@@ -216,13 +216,29 @@ export function Snap_To_Grid(value: number, grid_size: number = DEFAULT_GRID_SIZ
 	return Math.round(value / grid_size) * grid_size;
 }
 
-// Default bézier control points at 1/3 and 2/3 along the source→target line
-export function Default_Control_Points(source: Point, target: Point): Point[] {
+// Default bézier control points that leave the shape perpendicular to the port edge.
+// When port sides are provided, each CP extends outward from the endpoint in the
+// direction normal to that edge. Otherwise falls back to 1/3 and 2/3 along the line.
+export function Default_Control_Points(source: Point, target: Point, source_side?: string, target_side?: string): Point[] {
+	const dist = Math.hypot(target.x - source.x, target.y - source.y);
+	const arm = Math.max(30, dist * 0.4);
+
+	function Extend(pt: Point, side: string | undefined, fallback_dx: number, fallback_dy: number): Point {
+		if (!side) return { x: pt.x + fallback_dx, y: pt.y + fallback_dy };
+		switch (side) {
+			case 'top':    return { x: pt.x, y: pt.y - arm };
+			case 'bottom': return { x: pt.x, y: pt.y + arm };
+			case 'left':   return { x: pt.x - arm, y: pt.y };
+			case 'right':  return { x: pt.x + arm, y: pt.y };
+			default:       return { x: pt.x + fallback_dx, y: pt.y + fallback_dy };
+		}
+	}
+
 	const dx = target.x - source.x;
 	const dy = target.y - source.y;
 	return [
-		{ x: source.x + dx * 0.33, y: source.y + dy * 0.33 },
-		{ x: source.x + dx * 0.66, y: source.y + dy * 0.66 },
+		Extend(source, source_side, dx * 0.33, dy * 0.33),
+		Extend(target, target_side, -dx * 0.33, -dy * 0.33),
 	];
 }
 
