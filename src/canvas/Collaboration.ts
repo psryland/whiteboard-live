@@ -175,7 +175,11 @@ export class CollabSession {
 	private Handle_Message(event: MessageEvent): void {
 		try {
 			const envelope = JSON.parse(event.data);
-			// Web PubSub wraps messages — extract the actual data
+
+			// Web PubSub system messages (ack, connected) — skip
+			if (envelope.type === 'ack' || envelope.type === 'connected' || envelope.type === 'system') return;
+
+			// Web PubSub wraps group messages: { type: "message", from: "group", data: { ...our msg... } }
 			const msg: CollabMessage = envelope.data ?? envelope;
 			if (!msg.type || msg.sender_id === this.user_id) return;
 
@@ -214,7 +218,10 @@ export class CollabSession {
 					// If we're host, respond with current state
 					if (this.is_host) {
 						const state = this.handlers.on_state_requested?.();
-						if (state) this.Send_State(state);
+						if (state) {
+							console.log('[Collab] Sending state sync:', state.shapes?.length, 'shapes,', state.connectors?.length, 'connectors,', state.freehand_paths?.length, 'paths');
+							this.Send_State(state);
+						}
 					}
 					break;
 				}

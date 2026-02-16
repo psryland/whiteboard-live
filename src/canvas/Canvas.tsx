@@ -77,6 +77,14 @@ export function Canvas() {
 	const [connectors, set_connectors] = useState<Connector[]>(() => initial_state.connectors);
 	const [freehand_paths, set_freehand_paths] = useState<FreehandPath[]>(() => initial_state.freehand_paths);
 
+	// Refs to current state (for callbacks that must read latest values)
+	const shapes_ref = useRef(shapes);
+	shapes_ref.current = shapes;
+	const connectors_ref = useRef(connectors);
+	connectors_ref.current = connectors;
+	const freehand_ref = useRef(freehand_paths);
+	freehand_ref.current = freehand_paths;
+
 	// Global z-index counter — initialised from existing items
 	const z_counter = useRef(initial_state.max_z);
 	function Next_Z(): number { return ++z_counter.current; }
@@ -243,7 +251,7 @@ export function Canvas() {
 					set_freehand_paths(prev => prev.filter(f => !ids.has(f.id)));
 				}
 			},
-			on_state_requested: () => ({ shapes, connectors, freehand_paths }),
+			on_state_requested: () => ({ shapes: shapes_ref.current, connectors: connectors_ref.current, freehand_paths: freehand_ref.current }),
 			on_connection_change: (connected) => set_collab_connected(connected),
 		}, is_host);
 
