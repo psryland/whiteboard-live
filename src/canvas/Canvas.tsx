@@ -1733,7 +1733,7 @@ export function Canvas() {
 
 			{/* Remote cursors overlay (rendered in screen space on top of SVG) */}
 			{remote_users.length > 0 && (
-				<svg style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 50 }}>
+				<svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 50 }}>
 					<RemoteCursors users={remote_users} viewport={viewport} />
 				</svg>
 			)}
