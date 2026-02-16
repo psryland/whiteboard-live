@@ -174,20 +174,22 @@ function SelectionHandles({ x, y, width, height }: { x: number; y: number; width
 }
 
 // Port indicators rendered inside the shape's rotated group — use un-rotated positions
+// Only show midpoint and quarter ports visually; eighth-point ports are invisible snap targets
 function PortIndicators({ shape }: { shape: Shape }) {
 	return (
 		<>
 			{shape.ports.map((port) => {
 				const pos = Port_Position(shape, port, false);
+				const is_primary = !port.id.includes('-e');
 				return (
 					<circle
 						key={port.id}
 						cx={pos.x}
 						cy={pos.y}
-						r={5}
-						fill="#2196F3"
-						stroke="white"
-						strokeWidth={1.5}
+						r={is_primary ? 5 : 4}
+						fill={is_primary ? '#2196F3' : 'transparent'}
+						stroke={is_primary ? 'white' : 'transparent'}
+						strokeWidth={is_primary ? 1.5 : 0}
 						style={{ cursor: 'crosshair' }}
 						data-port-id={port.id}
 						data-shape-id={shape.id}

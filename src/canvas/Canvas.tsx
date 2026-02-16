@@ -109,6 +109,7 @@ export function Canvas() {
 	// Shape palette sidebar
 	const [show_board_panel, set_show_board_panel] = useState(false);
 	const [current_board_id, set_current_board_id] = useState<string | null>(null);
+	const [current_board_name, set_current_board_name] = useState('Untitled Board');
 
 	// Quick-connect: track the first shape for Shift+click connection
 	const quick_connect_source = useRef<string | null>(null);
@@ -1063,6 +1064,8 @@ export function Canvas() {
 				on_clear_canvas={Handle_Clear_Canvas}
 				current_board_id={current_board_id}
 				on_board_id_change={set_current_board_id}
+				current_board_name={current_board_name}
+				on_board_name_change={set_current_board_name}
 			/>
 
 			<svg
@@ -1157,7 +1160,7 @@ export function Canvas() {
 
 						// Generate the pressure-sensitive stroke outline
 						const stroke_points = getStroke(path.points, {
-							size: path.style.stroke_width * 4,
+							size: path.style.stroke_width * 2,
 							thinning: 0.5,
 							smoothing: 0.5,
 							streamline: 0.5,

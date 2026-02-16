@@ -23,6 +23,23 @@ export function Default_Ports(): Port[] {
 		{ id: 'left-q3', side: 'left', offset: 0.75 },
 		{ id: 'right-q1', side: 'right', offset: 0.25 },
 		{ id: 'right-q3', side: 'right', offset: 0.75 },
+		// Edge eighth points (for finer-grained attachment)
+		{ id: 'top-e1', side: 'top', offset: 0.125 },
+		{ id: 'top-e3', side: 'top', offset: 0.375 },
+		{ id: 'top-e5', side: 'top', offset: 0.625 },
+		{ id: 'top-e7', side: 'top', offset: 0.875 },
+		{ id: 'bottom-e1', side: 'bottom', offset: 0.125 },
+		{ id: 'bottom-e3', side: 'bottom', offset: 0.375 },
+		{ id: 'bottom-e5', side: 'bottom', offset: 0.625 },
+		{ id: 'bottom-e7', side: 'bottom', offset: 0.875 },
+		{ id: 'left-e1', side: 'left', offset: 0.125 },
+		{ id: 'left-e3', side: 'left', offset: 0.375 },
+		{ id: 'left-e5', side: 'left', offset: 0.625 },
+		{ id: 'left-e7', side: 'left', offset: 0.875 },
+		{ id: 'right-e1', side: 'right', offset: 0.125 },
+		{ id: 'right-e3', side: 'right', offset: 0.375 },
+		{ id: 'right-e5', side: 'right', offset: 0.625 },
+		{ id: 'right-e7', side: 'right', offset: 0.875 },
 	];
 }
 
@@ -44,29 +61,87 @@ function Rotate_Point(p: Point, cx: number, cy: number, angle_deg: number): Poin
 // When include_rotation is false, returns the position in the shape's local coordinate space
 // (useful for rendering inside an already-rotated SVG group)
 export function Port_Position(shape: Shape, port: Port, include_rotation: boolean = true): Point {
+	const cx = shape.x + shape.width / 2;
+	const cy = shape.y + shape.height / 2;
 	let p: Point;
-	switch (port.side) {
-		case 'top':
-			p = { x: shape.x + shape.width * port.offset, y: shape.y };
-			break;
-		case 'bottom':
-			p = { x: shape.x + shape.width * port.offset, y: shape.y + shape.height };
-			break;
-		case 'left':
-			p = { x: shape.x, y: shape.y + shape.height * port.offset };
-			break;
-		case 'right':
-			p = { x: shape.x + shape.width, y: shape.y + shape.height * port.offset };
-			break;
+
+	if (shape.type === 'ellipse') {
+		// Place ports on the ellipse perimeter using parametric angle
+		const rx = shape.width / 2;
+		const ry = shape.height / 2;
+		const angle = Port_To_Ellipse_Angle(port);
+		p = { x: cx + rx * Math.cos(angle), y: cy - ry * Math.sin(angle) };
+
+	} else if (shape.type === 'diamond') {
+		// Place ports on the diamond edges (4 edges connecting midpoints of bounding box sides)
+		p = Port_On_Diamond(shape.x, shape.y, shape.width, shape.height, port);
+
+	} else {
+		// Rectangle — ports on the bounding box edges
+		switch (port.side) {
+			case 'top':
+				p = { x: shape.x + shape.width * port.offset, y: shape.y };
+				break;
+			case 'bottom':
+				p = { x: shape.x + shape.width * port.offset, y: shape.y + shape.height };
+				break;
+			case 'left':
+				p = { x: shape.x, y: shape.y + shape.height * port.offset };
+				break;
+			case 'right':
+				p = { x: shape.x + shape.width, y: shape.y + shape.height * port.offset };
+				break;
+		}
 	}
 
 	// Apply shape rotation around its centre
 	if (include_rotation && shape.rotation) {
-		const cx = shape.x + shape.width / 2;
-		const cy = shape.y + shape.height / 2;
 		p = Rotate_Point(p, cx, cy, shape.rotation);
 	}
 	return p;
+}
+
+// Map a port (side + offset) to an angle on the ellipse perimeter.
+// Distributes ports evenly around the ellipse, grouped by side.
+function Port_To_Ellipse_Angle(port: Port): number {
+	// Each side maps to a 90° arc: top = 45°..135°, left = 135°..225°, bottom = 225°..315°, right = 315°..405° (=−45°..45°)
+	const base: Record<string, number> = { top: 90, left: 180, bottom: 270, right: 0 };
+	// offset 0 → start of arc (base−45°), offset 1 → end (base+45°), offset 0.5 → base
+	const deg = base[port.side] + (port.offset - 0.5) * -90;
+	return deg * Math.PI / 180;
+}
+
+// Map a port to a position on a diamond's edges.
+// Diamond vertices: top-mid, right-mid, bottom-mid, left-mid of the bounding box.
+function Port_On_Diamond(x: number, y: number, w: number, h: number, port: Port): Point {
+	const cx = x + w / 2;
+	const cy = y + h / 2;
+	const top: Point = { x: cx, y: y };
+	const right: Point = { x: x + w, y: cy };
+	const bottom: Point = { x: cx, y: y + h };
+	const left: Point = { x: x, y: cy };
+
+	// Each side of the bounding box maps to two diamond edges meeting at the adjacent diamond vertex
+	let a: Point, b: Point;
+	switch (port.side) {
+		case 'top':
+			// Top bbox edge → from left-vertex to top-vertex (offset 0→0.5) and top-vertex to right-vertex (0.5→1)
+			if (port.offset <= 0.5) { a = left; b = top; return Lerp_Points(a, b, port.offset * 2); }
+			else { a = top; b = right; return Lerp_Points(a, b, (port.offset - 0.5) * 2); }
+		case 'right':
+			if (port.offset <= 0.5) { a = top; b = right; return Lerp_Points(a, b, port.offset * 2); }
+			else { a = right; b = bottom; return Lerp_Points(a, b, (port.offset - 0.5) * 2); }
+		case 'bottom':
+			if (port.offset <= 0.5) { a = right; b = bottom; return Lerp_Points(a, b, port.offset * 2); }
+			else { a = bottom; b = left; return Lerp_Points(a, b, (port.offset - 0.5) * 2); }
+		case 'left':
+			if (port.offset <= 0.5) { a = bottom; b = left; return Lerp_Points(a, b, port.offset * 2); }
+			else { a = left; b = top; return Lerp_Points(a, b, (port.offset - 0.5) * 2); }
+	}
+}
+
+function Lerp_Points(a: Point, b: Point, t: number): Point {
+	return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
 // Find the nearest port on a shape to a given point

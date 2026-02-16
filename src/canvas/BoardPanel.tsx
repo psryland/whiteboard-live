@@ -34,6 +34,8 @@ interface BoardPanelProps {
 	on_clear_canvas: () => void;
 	current_board_id: string | null;
 	on_board_id_change: (id: string) => void;
+	current_board_name: string;
+	on_board_name_change: (name: string) => void;
 }
 
 export function BoardPanel({
@@ -44,10 +46,14 @@ export function BoardPanel({
 	on_clear_canvas,
 	current_board_id,
 	on_board_id_change,
+	current_board_name,
+	on_board_name_change,
 }: BoardPanelProps) {
 	const [boards, set_boards] = useState<BoardInfo[]>(() => Load_Board_Index());
 	const [editing_id, set_editing_id] = useState<string | null>(null);
 	const [edit_name, set_edit_name] = useState('');
+	const [editing_title, set_editing_title] = useState(false);
+	const [title_draft, set_title_draft] = useState('');
 	const [export_message, set_export_message] = useState<string | null>(null);
 	const file_input_ref = useRef<HTMLInputElement>(null);
 
@@ -67,7 +73,7 @@ export function BoardPanel({
 		if (current_board_id) {
 			// Update existing
 			localStorage.setItem(BOARD_PREFIX + current_board_id, JSON.stringify(current_state));
-			const updated = boards.map(b => b.id === current_board_id ? { ...b, updated_at: now } : b);
+			const updated = boards.map(b => b.id === current_board_id ? { ...b, name: current_board_name, updated_at: now } : b);
 			Save_Board_Index(updated);
 			set_boards(updated);
 			set_export_message('Saved!');
@@ -78,7 +84,7 @@ export function BoardPanel({
 	}
 
 	function Handle_Save_As(): void {
-		const name = prompt('Board name:', `Board ${boards.length + 1}`);
+		const name = prompt('Board name:', current_board_name || `Board ${boards.length + 1}`);
 		if (!name) return;
 		const id = Generate_Board_Id();
 		const now = Date.now();
@@ -88,6 +94,7 @@ export function BoardPanel({
 		Save_Board_Index(updated);
 		set_boards(updated);
 		on_board_id_change(id);
+		on_board_name_change(name);
 		set_export_message('Saved!');
 	}
 
@@ -98,6 +105,7 @@ export function BoardPanel({
 			const state = JSON.parse(raw) as CanvasState;
 			on_load_board(state);
 			on_board_id_change(board.id);
+			on_board_name_change(board.name);
 		} catch { /* ignore */ }
 	}
 
@@ -197,6 +205,32 @@ export function BoardPanel({
 
 			{is_open && (
 				<div style={panel_style}>
+					{/* Current board name — click to edit */}
+					<div style={{ marginBottom: 12 }}>
+						{editing_title ? (
+							<input
+								autoFocus
+								value={title_draft}
+								onChange={e => set_title_draft(e.target.value)}
+								onBlur={() => { on_board_name_change(title_draft.trim() || 'Untitled Board'); set_editing_title(false); }}
+								onKeyDown={e => {
+									if (e.key === 'Enter') { on_board_name_change(title_draft.trim() || 'Untitled Board'); set_editing_title(false); }
+									if (e.key === 'Escape') set_editing_title(false);
+								}}
+								style={board_name_input_style}
+							/>
+						) : (
+							<div
+								onClick={() => { set_editing_title(true); set_title_draft(current_board_name); }}
+								style={board_name_display_style}
+								title="Click to rename"
+							>
+								{current_board_name}
+								<span style={{ fontSize: 10, color: '#bbb', marginLeft: 4 }}>✎</span>
+							</div>
+						)}
+					</div>
+
 					<h3 style={heading_style}>Boards</h3>
 
 					{/* Save buttons */}
@@ -212,14 +246,14 @@ export function BoardPanel({
 						</button>
 					</div>
 
-					{/* Board list */}
+					{/* Board list — sorted by most recent */}
 					<div style={{ flex: 1, overflowY: 'auto', marginBottom: 12 }}>
 						{boards.length === 0 && (
 							<div style={{ fontSize: 12, color: '#999', textAlign: 'center', padding: 16 }}>
 								No saved boards yet
 							</div>
 						)}
-						{boards.map(board => (
+						{[...boards].sort((a, b) => b.updated_at - a.updated_at).map(board => (
 							<div
 								key={board.id}
 								style={{
@@ -403,4 +437,31 @@ const delete_btn_style: React.CSSProperties = {
 	display: 'flex',
 	alignItems: 'center',
 	justifyContent: 'center',
+};
+
+const board_name_display_style: React.CSSProperties = {
+	fontSize: 15,
+	fontWeight: 600,
+	color: '#333',
+	cursor: 'pointer',
+	padding: '4px 6px',
+	borderRadius: 4,
+	border: '1px solid transparent',
+	transition: 'border-color 0.15s',
+	overflow: 'hidden',
+	textOverflow: 'ellipsis',
+	whiteSpace: 'nowrap',
+	fontFamily: 'inherit',
+};
+
+const board_name_input_style: React.CSSProperties = {
+	width: '100%',
+	fontSize: 15,
+	fontWeight: 600,
+	padding: '4px 6px',
+	border: '1px solid #64b5f6',
+	borderRadius: 4,
+	outline: 'none',
+	fontFamily: 'inherit',
+	boxSizing: 'border-box',
 };
