@@ -43,7 +43,8 @@ export function ShapeRenderer({
 	const transform = rotation ? `rotate(${rotation}, ${cx}, ${cy})` : undefined;
 
 	return (
-		<g {...group_props} data-shape-id={shape.id} transform={transform}>
+		<g {...group_props} data-shape-id={shape.id} transform={transform}
+			opacity={(style.opacity ?? 100) / 100}>
 			{/* Shape outline — always drawn with the shape's own style */}
 			{type === 'rectangle' && (
 				<rect x={x} y={y} width={width} height={height}

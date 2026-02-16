@@ -21,7 +21,7 @@ function Load_State(): CanvasState {
 			const shapes = (parsed.shapes || []).map((s: any) => ({
 				rotation: 0,
 				...s,
-				style: { rounded: false, ...s.style },
+				style: { rounded: false, opacity: 100, ...s.style },
 			}));
 			// Migrate connectors missing arrow_type
 			const connectors = (parsed.connectors || []).map((c: any) => ({ arrow_type: 'forward' as const, routing: 'ortho' as const, ...c }));
@@ -482,6 +482,17 @@ export function Canvas() {
 			else if (handle === 5) { width += dx; }
 			else if (handle === 6) { height += dy; }
 			else if (handle === 7) { x += dx; width -= dx; }
+
+			// Shift constrains to square aspect ratio (corner handles only)
+			if (e.shiftKey && handle <= 3) {
+				const size = Math.max(width, height);
+				if (handle === 0) { x += width - size; y += height - size; }
+				else if (handle === 1) { y += height - size; }
+				// handle 2: anchor is TL, no adjustment needed
+				else if (handle === 3) { x += width - size; }
+				width = size;
+				height = size;
+			}
 
 			if (snap_enabled && !e.altKey) {
 				x = Snap_To_Grid(x, grid_size);
@@ -1037,6 +1048,40 @@ export function Canvas() {
 		));
 	}, [selected_ids, Push_Undo]);
 
+	const Handle_Z_Order = useCallback((action: 'bring_front' | 'send_back' | 'bring_forward' | 'send_backward') => {
+		Push_Undo();
+		set_shapes(prev => {
+			const selected = prev.filter(s => selected_ids.has(s.id));
+			const rest = prev.filter(s => !selected_ids.has(s.id));
+			switch (action) {
+				case 'bring_front': return [...rest, ...selected];
+				case 'send_back': return [...selected, ...rest];
+				case 'bring_forward': {
+					const result = [...prev];
+					for (const s of selected) {
+						const idx = result.indexOf(s);
+						if (idx < result.length - 1) {
+							result.splice(idx, 1);
+							result.splice(idx + 1, 0, s);
+						}
+					}
+					return result;
+				}
+				case 'send_backward': {
+					const result = [...prev];
+					for (const s of [...selected].reverse()) {
+						const idx = result.indexOf(s);
+						if (idx > 0) {
+							result.splice(idx, 1);
+							result.splice(idx - 1, 0, s);
+						}
+					}
+					return result;
+				}
+			}
+		});
+	}, [selected_ids, Push_Undo]);
+
 	return (
 		<div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#f8f9fa' }}>
 			<Toolbar
@@ -1307,8 +1352,8 @@ export function Canvas() {
 				on_style_change={Apply_Style_Change}
 				on_position_change={Handle_Position_Change}
 				on_text_change={Handle_Panel_Text_Change}
-				on_opacity_change={() => {}}
 				on_rounded_change={Handle_Rounded_Change}
+				on_z_order={Handle_Z_Order}
 			/>
 		</div>
 	);

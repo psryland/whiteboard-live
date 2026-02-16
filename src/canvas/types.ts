@@ -36,6 +36,7 @@ export interface ShapeStyle {
 	font_size: number;
 	text_colour: string;
 	rounded: boolean;
+	opacity: number;
 }
 
 export const DEFAULT_STYLE: ShapeStyle = {
@@ -45,6 +46,7 @@ export const DEFAULT_STYLE: ShapeStyle = {
 	font_size: 14,
 	text_colour: '#333333',
 	rounded: false,
+	opacity: 100,
 };
 
 export interface Shape {

@@ -6,8 +6,8 @@ interface PropertiesPanelProps {
 	on_style_change: (changes: Partial<ShapeStyle>) => void;
 	on_position_change: (changes: { x?: number; y?: number; width?: number; height?: number; rotation?: number }) => void;
 	on_text_change: (text: string) => void;
-	on_opacity_change: (opacity: number) => void;
 	on_rounded_change: (rounded: boolean) => void;
+	on_z_order: (action: 'bring_front' | 'send_back' | 'bring_forward' | 'send_backward') => void;
 }
 
 const QUICK_COLOURS = [
@@ -20,8 +20,8 @@ export function PropertiesPanel({
 	on_style_change,
 	on_position_change,
 	on_text_change,
-	on_opacity_change,
 	on_rounded_change,
+	on_z_order,
 }: PropertiesPanelProps) {
 	const [active_tab, set_active_tab] = useState<'style' | 'text' | 'arrange'>('style');
 
@@ -71,9 +71,7 @@ export function PropertiesPanel({
 				{active_tab === 'style' && (
 					<StyleTab
 						style={style}
-						opacity={shape.style.fill === 'none' ? 0 : 100}
 						on_style_change={on_style_change}
-						on_opacity_change={on_opacity_change}
 						on_rounded_change={on_rounded_change}
 						is_rounded={shape.style.rounded ?? false}
 					/>
@@ -90,6 +88,7 @@ export function PropertiesPanel({
 					<ArrangeTab
 						shape={shape}
 						on_position_change={on_position_change}
+						on_z_order={on_z_order}
 					/>
 				)}
 			</div>
@@ -97,11 +96,9 @@ export function PropertiesPanel({
 	);
 }
 
-function StyleTab({ style, on_style_change, on_opacity_change, on_rounded_change, is_rounded }: {
+function StyleTab({ style, on_style_change, on_rounded_change, is_rounded }: {
 	style: ShapeStyle;
-	opacity: number;
 	on_style_change: (changes: Partial<ShapeStyle>) => void;
-	on_opacity_change: (opacity: number) => void;
 	on_rounded_change: (rounded: boolean) => void;
 	is_rounded: boolean;
 }) {
@@ -172,11 +169,11 @@ function StyleTab({ style, on_style_change, on_opacity_change, on_rounded_change
 					type="range"
 					min={0}
 					max={100}
-					value={100}
-					onChange={e => on_opacity_change(parseInt(e.target.value))}
+					value={style.opacity ?? 100}
+					onChange={e => on_style_change({ opacity: parseInt(e.target.value) })}
 					style={{ flex: 1 }}
 				/>
-				<span style={{ fontSize: 11, color: '#999', minWidth: 32 }}>100%</span>
+				<span style={{ fontSize: 11, color: '#999', minWidth: 32 }}>{style.opacity ?? 100}%</span>
 			</div>
 
 			{/* Checkboxes */}
@@ -234,9 +231,10 @@ function TextTab({ text, style, on_text_change, on_style_change }: {
 	);
 }
 
-function ArrangeTab({ shape, on_position_change }: {
+function ArrangeTab({ shape, on_position_change, on_z_order }: {
 	shape: Shape;
 	on_position_change: (changes: { x?: number; y?: number; width?: number; height?: number; rotation?: number }) => void;
+	on_z_order: (action: 'bring_front' | 'send_back' | 'bring_forward' | 'send_backward') => void;
 }) {
 	return (
 		<>
@@ -296,6 +294,25 @@ function ArrangeTab({ shape, on_position_change }: {
 					style={{ ...input_style, width: 64 }}
 				/>
 				<span style={{ fontSize: 11, color: '#999' }}>°</span>
+			</div>
+
+			{/* Z-order controls */}
+			<div style={{ borderTop: '1px solid #e0e0e0', marginTop: 12, paddingTop: 8 }}>
+				<label style={{ ...label_style, marginBottom: 6, display: 'block' }}>Order</label>
+				<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+					<button onClick={() => on_z_order('bring_front')} style={z_btn_style} title="Bring to Front">
+						⬆⬆ Front
+					</button>
+					<button onClick={() => on_z_order('send_back')} style={z_btn_style} title="Send to Back">
+						⬇⬇ Back
+					</button>
+					<button onClick={() => on_z_order('bring_forward')} style={z_btn_style} title="Bring Forward">
+						⬆ Forward
+					</button>
+					<button onClick={() => on_z_order('send_backward')} style={z_btn_style} title="Send Backward">
+						⬇ Backward
+					</button>
+				</div>
 			</div>
 
 			<div style={{ marginTop: 12, fontSize: 12, color: '#666' }}>
@@ -358,4 +375,14 @@ const mini_btn_style: React.CSSProperties = {
 	cursor: 'pointer',
 	fontFamily: 'inherit',
 	fontWeight: 500,
+};
+
+const z_btn_style: React.CSSProperties = {
+	padding: '4px 6px',
+	border: '1px solid #e0e0e0',
+	borderRadius: 4,
+	fontSize: 11,
+	cursor: 'pointer',
+	fontFamily: 'inherit',
+	background: '#f5f5f5',
 };
