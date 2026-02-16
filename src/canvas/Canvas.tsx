@@ -124,6 +124,8 @@ export function Canvas() {
 		// Endpoint drag state
 		endpoint_connector_id?: string;
 		endpoint_end?: 'source' | 'target';
+		endpoint_original?: Point; // original endpoint position when drag started
+		endpoint_original_cp?: Point; // original control point for the dragged end
 	}>({ type: 'none', start_canvas: { x: 0, y: 0 }, start_screen: { x: 0, y: 0 } });
 
 	// Marquee rectangle (screen coords for overlay display)
@@ -656,12 +658,30 @@ export function Canvas() {
 				? { shape_id: hover_shape.id, port_id: Nearest_Port(hover_shape, canvas_pt).id, x: 0, y: 0 }
 				: { shape_id: null, port_id: null, x: canvas_pt.x, y: canvas_pt.y };
 
+			// Translate the associated control point by the same delta as the endpoint
+			const resolved_new = hover_shape
+				? Port_Position(hover_shape, hover_shape.ports.find(p => p.id === new_end.port_id)!)
+				: canvas_pt;
+			const orig = ds.endpoint_original ?? canvas_pt;
+			const dx = resolved_new.x - orig.x;
+			const dy = resolved_new.y - orig.y;
+			const cp_index = ds.endpoint_end === 'source' ? 0 : 1;
+			const orig_cp = ds.endpoint_original_cp;
+
 			set_connectors(prev => prev.map(c => {
 				if (c.id !== ds.endpoint_connector_id) return c;
-				if (ds.endpoint_end === 'source') {
-					return { ...c, source: new_end };
+				const src_pt = Resolve_Connector_End(c.source, shapes);
+				const tgt_pt = Resolve_Connector_End(c.target, shapes);
+				const src_side = Resolve_Port_Side_For_End(c.source, shapes);
+				const tgt_side = Resolve_Port_Side_For_End(c.target, shapes);
+				const cp = [...(c.control_points || Default_Control_Points(src_pt, tgt_pt, src_side, tgt_side))];
+				if (orig_cp) {
+					cp[cp_index] = { x: orig_cp.x + dx, y: orig_cp.y + dy };
 				}
-				return { ...c, target: new_end };
+				if (ds.endpoint_end === 'source') {
+					return { ...c, source: new_end, control_points: cp };
+				}
+				return { ...c, target: new_end, control_points: cp };
 			}));
 		} else if (ds.type === 'laser' && ds.laser_points) {
 			const now = Date.now();
@@ -763,20 +783,7 @@ export function Canvas() {
 			// Control point drag complete
 		} else if (ds.type === 'endpoint_drag' && ds.endpoint_connector_id) {
 			set_hovered_shape_id(null);
-			// Final snap — recalculate control points for the new position
-			const canvas_pt = Screen_To_Canvas(Get_SVG_Point(e), viewport);
-			const target_shape = shapes.find(s =>
-				canvas_pt.x >= s.x && canvas_pt.x <= s.x + s.width &&
-				canvas_pt.y >= s.y && canvas_pt.y <= s.y + s.height
-			);
-			const final_end: ConnectorEnd = target_shape
-				? { shape_id: target_shape.id, port_id: Nearest_Port(target_shape, canvas_pt).id, x: 0, y: 0 }
-				: { shape_id: null, port_id: null, x: canvas_pt.x, y: canvas_pt.y };
-			set_connectors(prev => prev.map(c => {
-				if (c.id !== ds.endpoint_connector_id) return c;
-				if (ds.endpoint_end === 'source') return { ...c, source: final_end, control_points: undefined };
-				return { ...c, target: final_end, control_points: undefined };
-			}));
+			// The control points were already translated during the drag — just keep them
 		} else if (ds.type === 'laser') {
 			// Laser trail fades on its own via animation
 		}
@@ -1073,6 +1080,18 @@ export function Canvas() {
 	const Handle_Endpoint_Drag = useCallback((connector_id: string, end: 'source' | 'target', e: React.PointerEvent) => {
 		const screen_pt = Get_SVG_Point(e);
 		const canvas_pt = Screen_To_Canvas(screen_pt, viewport);
+
+		// Capture original endpoint position and its control point
+		const conn = connectors.find(c => c.id === connector_id);
+		const orig_pt = conn ? Resolve_Connector_End(end === 'source' ? conn.source : conn.target, shapes) : canvas_pt;
+		const cp_index = end === 'source' ? 0 : 1;
+		const src_pt = conn ? Resolve_Connector_End(conn.source, shapes) : canvas_pt;
+		const tgt_pt = conn ? Resolve_Connector_End(conn.target, shapes) : canvas_pt;
+		const src_side = conn ? Resolve_Port_Side_For_End(conn.source, shapes) : undefined;
+		const tgt_side = conn ? Resolve_Port_Side_For_End(conn.target, shapes) : undefined;
+		const cps = conn?.control_points || Default_Control_Points(src_pt, tgt_pt, src_side, tgt_side);
+		const orig_cp = cps[cp_index];
+
 		Push_Undo();
 		drag_state.current = {
 			type: 'endpoint_drag',
@@ -1080,9 +1099,11 @@ export function Canvas() {
 			start_screen: screen_pt,
 			endpoint_connector_id: connector_id,
 			endpoint_end: end,
+			endpoint_original: orig_pt,
+			endpoint_original_cp: orig_cp,
 		};
 		set_connector_preview(null);
-	}, [viewport, Push_Undo, Get_SVG_Point]);
+	}, [viewport, connectors, shapes, Push_Undo, Get_SVG_Point]);
 
 	// Freehand path click handler
 	const Handle_Freehand_PointerDown = useCallback((e: React.PointerEvent, path_id: string) => {
