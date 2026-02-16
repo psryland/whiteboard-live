@@ -1119,8 +1119,12 @@ export function Canvas() {
 	const Handle_Text_Commit = useCallback(() => {
 		// Guard against immediate blur when input first mounts
 		if (Date.now() - editing_started_at.current < 200) return;
+		if (editing_shape_id) {
+			const s = shapes.find(sh => sh.id === editing_shape_id);
+			if (s) Broadcast_Update('shape', s);
+		}
 		set_editing_shape_id(null);
-	}, []);
+	}, [editing_shape_id, shapes]);
 
 	// ── Canvas double-click → create shape ──
 	const Handle_Canvas_DoubleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -1390,9 +1394,13 @@ export function Canvas() {
 	}, [selected_ids, Push_Undo]);
 
 	const Handle_Panel_Text_Change = useCallback((text: string) => {
-		set_shapes(prev => prev.map(s =>
-			selected_ids.has(s.id) ? { ...s, text } : s
-		));
+		set_shapes(prev => {
+			const updated = prev.map(s =>
+				selected_ids.has(s.id) ? { ...s, text } : s
+			);
+			updated.filter(s => selected_ids.has(s.id)).forEach(s => Broadcast_Update('shape', s));
+			return updated;
+		});
 	}, [selected_ids]);
 
 	const Handle_Rounded_Change = useCallback((rounded: boolean) => {
