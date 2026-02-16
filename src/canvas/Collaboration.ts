@@ -31,7 +31,7 @@ function Get_User_Colour(user_id: string): string {
 export type CollabEventHandler = {
 	on_user_join?: (user: CollabUser) => void;
 	on_user_leave?: (user_id: string) => void;
-	on_cursor_move?: (user_id: string, cursor: Point) => void;
+	on_cursor_move?: (user_id: string, cursor: Point, sender_name: string, sender_colour: string) => void;
 	on_state_sync?: (state: CanvasState) => void;
 	on_operation?: (msg: CollabMessage) => void;
 	on_state_requested?: () => CanvasState | null;
@@ -203,7 +203,7 @@ export class CollabSession {
 						user.cursor = msg.payload;
 						user.status = 'editing';
 					}
-					this.handlers.on_cursor_move?.(msg.sender_id, msg.payload);
+					this.handlers.on_cursor_move?.(msg.sender_id, msg.payload, msg.sender_name, msg.sender_colour);
 					break;
 				}
 				case 'state_sync': {

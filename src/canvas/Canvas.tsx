@@ -173,6 +173,9 @@ export function Canvas() {
 		const params = new URLSearchParams(window.location.search);
 		const room = params.get('room');
 		if (room) {
+			const saved_name = localStorage.getItem('whitebored-user-name') || '';
+			const name = prompt('Enter your display name to join the session:', saved_name) || saved_name || 'Anonymous';
+			localStorage.setItem('whitebored-user-name', name);
 			Start_Collab_Session(room, false);
 		}
 	}, []);
@@ -201,10 +204,15 @@ export function Canvas() {
 					return prev.filter(u => u.id !== user_id);
 				});
 			},
-			on_cursor_move: (user_id, cursor) => {
-				set_remote_users(prev => prev.map(u =>
-					u.id === user_id ? { ...u, cursor, status: 'editing' } : u
-				));
+			on_cursor_move: (user_id, cursor, sender_name, sender_colour) => {
+				set_remote_users(prev => {
+					const exists = prev.some(u => u.id === user_id);
+					if (exists) {
+						return prev.map(u => u.id === user_id ? { ...u, cursor, status: 'editing', name: sender_name || u.name, colour: sender_colour || u.colour } : u);
+					}
+					// User not yet known (join message may not have arrived) — add them
+					return [...prev, { id: user_id, name: sender_name || 'Unknown', colour: sender_colour || '#888', status: 'editing' as const, permission: 'edit' as const, cursor }];
+				});
 			},
 			on_state_sync: (state) => {
 				set_shapes(state.shapes || []);
@@ -259,6 +267,9 @@ export function Canvas() {
 	}
 
 	function Handle_Start_Sharing(): void {
+		const saved_name = localStorage.getItem('whitebored-user-name') || '';
+		const name = prompt('Enter your display name:', saved_name) || saved_name || 'Anonymous';
+		localStorage.setItem('whitebored-user-name', name);
 		const room_id = Generate_Room_Id();
 		Start_Collab_Session(room_id, true);
 		// Add room to URL
