@@ -629,17 +629,15 @@ export function Canvas() {
 				return { ...c, control_points: cp };
 			}));
 		} else if (ds.type === 'endpoint_drag' && ds.endpoint_connector_id) {
-			// Show preview line while dragging endpoint
-			const conn = connectors.find(c => c.id === ds.endpoint_connector_id);
-			if (conn) {
-				const other_end = ds.endpoint_end === 'source' ? conn.target : conn.source;
-				const other_pt = Resolve_Connector_End(other_end, shapes);
+			// Update the connector endpoint in real-time during drag
+			set_connectors(prev => prev.map(c => {
+				if (c.id !== ds.endpoint_connector_id) return c;
+				const free_end: ConnectorEnd = { shape_id: null, port_id: null, x: canvas_pt.x, y: canvas_pt.y };
 				if (ds.endpoint_end === 'source') {
-					set_connector_preview({ from: canvas_pt, to: other_pt });
-				} else {
-					set_connector_preview({ from: other_pt, to: canvas_pt });
+					return { ...c, source: free_end, control_points: undefined };
 				}
-			}
+				return { ...c, target: free_end, control_points: undefined };
+			}));
 		} else if (ds.type === 'laser' && ds.laser_points) {
 			const now = Date.now();
 			ds.laser_points.push({ ...canvas_pt, timestamp: now });
@@ -739,21 +737,20 @@ export function Canvas() {
 		} else if (ds.type === 'cp_drag') {
 			// Control point drag complete
 		} else if (ds.type === 'endpoint_drag' && ds.endpoint_connector_id) {
-			set_connector_preview(null);
+			// Snap to nearest port if over a shape, otherwise keep as free-floating
 			const canvas_pt = Screen_To_Canvas(Get_SVG_Point(e), viewport);
-			// Check if we landed on a shape — snap to nearest port
 			const target_shape = shapes.find(s =>
 				canvas_pt.x >= s.x && canvas_pt.x <= s.x + s.width &&
 				canvas_pt.y >= s.y && canvas_pt.y <= s.y + s.height
 			);
-			const new_end: ConnectorEnd = target_shape
-				? { shape_id: target_shape.id, port_id: Nearest_Port(target_shape, canvas_pt).id, x: 0, y: 0 }
-				: { shape_id: null, port_id: null, x: canvas_pt.x, y: canvas_pt.y };
-			set_connectors(prev => prev.map(c => {
-				if (c.id !== ds.endpoint_connector_id) return c;
-				if (ds.endpoint_end === 'source') return { ...c, source: new_end, control_points: undefined };
-				return { ...c, target: new_end, control_points: undefined };
-			}));
+			if (target_shape) {
+				const snapped: ConnectorEnd = { shape_id: target_shape.id, port_id: Nearest_Port(target_shape, canvas_pt).id, x: 0, y: 0 };
+				set_connectors(prev => prev.map(c => {
+					if (c.id !== ds.endpoint_connector_id) return c;
+					if (ds.endpoint_end === 'source') return { ...c, source: snapped, control_points: undefined };
+					return { ...c, target: snapped, control_points: undefined };
+				}));
+			}
 		} else if (ds.type === 'laser') {
 			// Laser trail fades on its own via animation
 		}
@@ -1049,7 +1046,7 @@ export function Canvas() {
 			endpoint_connector_id: connector_id,
 			endpoint_end: end,
 		};
-		set_connector_preview({ from: canvas_pt, to: canvas_pt });
+		set_connector_preview(null);
 	}, [viewport, Push_Undo, Get_SVG_Point]);
 
 	// Freehand path click handler

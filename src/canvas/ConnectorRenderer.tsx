@@ -64,7 +64,7 @@ export function ConnectorRenderer({ connector, shapes, is_selected, on_pointer_d
 								cx={pt.x} cy={pt.y} r={5}
 								fill="#fff" stroke="#2196F3" strokeWidth={1.5}
 								style={{ cursor: 'move' }}
-								onPointerDown={(e) => { e.stopPropagation(); on_control_point_drag?.(connector.id, i, e); }}
+								onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); on_control_point_drag?.(connector.id, i, e); }}
 							/>
 						))}
 						<EndpointHandle pt={source} end="source" connector_id={connector.id} on_drag={on_endpoint_drag} />
@@ -244,7 +244,7 @@ function EndpointHandle({ pt, end, connector_id, on_drag }: {
 			stroke="#ff9800"
 			strokeWidth={1.5}
 			style={{ cursor: 'crosshair' }}
-			onPointerDown={(e) => { e.stopPropagation(); on_drag?.(connector_id, end, e); }}
+			onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); on_drag?.(connector_id, end, e); }}
 		/>
 	);
 }
