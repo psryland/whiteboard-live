@@ -1,8 +1,11 @@
 import type { CanvasState } from '../canvas/types';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
-const APP_FOLDER = '/me/drive/special/approot';
+const APP_FOLDER_NAME = 'Whiteboard Live';
 const FILE_EXT = '.wbl.json';
+
+// Cache the app folder ID after first lookup
+let cached_folder_id: string | null = null;
 
 export interface CloudBoard {
 	id: string;
@@ -29,18 +32,39 @@ async function Graph_Fetch(token: string, url: string, init?: RequestInit): Prom
 	return res;
 }
 
-/** Ensure the app folder exists (OneDrive creates /Apps/Whiteboard Live/ automatically via approot). */
-async function Ensure_App_Folder(token: string): Promise<void> {
-	// Accessing approot auto-creates it; just check it exists
-	await Graph_Fetch(token, `${GRAPH_BASE}${APP_FOLDER}`);
+/** Get or create the app folder in OneDrive root. */
+async function Get_App_Folder_Id(token: string): Promise<string> {
+	if (cached_folder_id) return cached_folder_id;
+
+	// Try to find existing folder
+	try {
+		const res = await Graph_Fetch(token, `${GRAPH_BASE}/me/drive/root:/${APP_FOLDER_NAME}`);
+		const folder = await res.json();
+		cached_folder_id = folder.id;
+		return folder.id;
+	} catch {
+		// Folder doesn't exist — create it
+		const res = await Graph_Fetch(token, `${GRAPH_BASE}/me/drive/root/children`, {
+			method: 'POST',
+			body: JSON.stringify({
+				name: APP_FOLDER_NAME,
+				folder: {},
+				'@microsoft.graph.conflictBehavior': 'fail',
+			}),
+		});
+		const folder = await res.json();
+		cached_folder_id = folder.id;
+		return folder.id;
+	}
 }
 
 /** List all .wbl.json boards in the app folder. */
 export async function List_Cloud_Boards(token: string): Promise<CloudBoard[]> {
-	await Ensure_App_Folder(token);
-	const res = await Graph_Fetch(token, `${GRAPH_BASE}${APP_FOLDER}/children?$filter=endsWith(name,'${FILE_EXT}')&$orderby=lastModifiedDateTime desc`);
+	const folder_id = await Get_App_Folder_Id(token);
+	const res = await Graph_Fetch(token, `${GRAPH_BASE}/me/drive/items/${folder_id}/children`);
 	const data = await res.json();
-	return (data.value || []).map((item: any) => ({
+	const boards = (data.value || []).filter((item: any) => item.name?.endsWith(FILE_EXT));
+	return boards.map((item: any) => ({
 		id: item.id,
 		name: item.name.replace(FILE_EXT, ''),
 		file_name: item.name,
@@ -63,11 +87,9 @@ export async function Save_Cloud_Board(token: string, name: string, state: Canva
 
 	let url: string;
 	if (existing_id) {
-		// Update existing file content
 		url = `${GRAPH_BASE}/me/drive/items/${existing_id}/content`;
 	} else {
-		// Create or replace by path
-		url = `${GRAPH_BASE}${APP_FOLDER}:/${file_name}:/content`;
+		url = `${GRAPH_BASE}/me/drive/root:/${APP_FOLDER_NAME}/${file_name}:/content`;
 	}
 
 	const res = await Graph_Fetch(token, url, {
