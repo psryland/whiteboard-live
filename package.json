@@ -13,7 +13,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
-		"build": "tsc && vite build",
+		"build": "node scripts/sync-version.mjs && tsc && vite build",
 		"preview": "vite preview",
 		"lint": "eslint src/ --ext .ts,.tsx"
 	},
