@@ -1,7 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Shape, ShapeStyle, Connector, ArrowType, ConnectorRouting, FreehandPath, CollabUser } from './types';
 import { PresenceAvatars } from './RemoteCursors';
 import { CollabSession, Share_Url } from './Collaboration';
+
+function Use_Is_Mobile(breakpoint = 640): boolean {
+	const [is_mobile, set_is_mobile] = useState(window.innerWidth < breakpoint);
+	useEffect(() => {
+		const handler = () => set_is_mobile(window.innerWidth < breakpoint);
+		window.addEventListener('resize', handler);
+		return () => window.removeEventListener('resize', handler);
+	}, [breakpoint]);
+	return is_mobile;
+}
 
 interface PropertiesPanelProps {
 	selected_shapes: Shape[];
@@ -71,6 +81,21 @@ function CreatedByTag({ name }: { name?: string }) {
 	);
 }
 
+// Drag handle for mobile bottom sheet
+function MobileHandle({ on_close }: { on_close: () => void }) {
+	return (
+		<div
+			onClick={on_close}
+			style={{
+				display: 'flex', justifyContent: 'center', alignItems: 'center',
+				padding: '6px 0 2px', cursor: 'pointer',
+			}}
+		>
+			<div style={{ width: 36, height: 4, borderRadius: 2, background: '#ccc' }} />
+		</div>
+	);
+}
+
 export function PropertiesPanel({
 	selected_shapes,
 	selected_connectors,
@@ -94,6 +119,17 @@ export function PropertiesPanel({
 	const [active_tab, set_active_tab] = useState<'style' | 'text' | 'arrange'>('style');
 	const [copied, set_copied] = useState(false);
 	const [copied_code, set_copied_code] = useState(false);
+	const is_mobile = Use_Is_Mobile();
+	const [mobile_panel_open, set_mobile_panel_open] = useState(false);
+
+	// Auto-open when selection changes on mobile
+	const has_selection = selected_shapes.length > 0 || selected_connectors.length > 0 || selected_freehand.length > 0;
+	useEffect(() => {
+		if (is_mobile && has_selection) set_mobile_panel_open(true);
+	}, [is_mobile, has_selection]);
+
+	const wrapper_style = is_mobile ? panel_wrapper_mobile_style : panel_wrapper_style;
+	const p_style = is_mobile ? panel_mobile_style : panel_style;
 
 	function Handle_Copy_Link() {
 		if (!collab_session) return;
@@ -224,10 +260,12 @@ export function PropertiesPanel({
 
 	// Show connector panel if connectors are selected and no shapes/freehand
 	if (selected_connectors.length > 0 && selected_shapes.length === 0 && selected_freehand.length === 0) {
+		if (is_mobile && !mobile_panel_open) return <>{collab_controls}</>;
 		return (
-			<div style={panel_wrapper_style}>
+			<div style={wrapper_style}>
 				{collab_controls}
-				<div style={panel_style} onPointerDown={e => e.stopPropagation()}>
+				<div style={p_style} onPointerDown={e => e.stopPropagation()}>
+					{is_mobile && <MobileHandle on_close={() => set_mobile_panel_open(false)} />}
 					<div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
 						<ConnectorTab
 							connector={selected_connectors[0]}
@@ -243,10 +281,12 @@ export function PropertiesPanel({
 
 	// Show freehand panel if freehand paths are selected and no shapes/connectors
 	if (selected_freehand.length > 0 && selected_shapes.length === 0 && selected_connectors.length === 0) {
+		if (is_mobile && !mobile_panel_open) return <>{collab_controls}</>;
 		return (
-			<div style={panel_wrapper_style}>
+			<div style={wrapper_style}>
 				{collab_controls}
-				<div style={panel_style} onPointerDown={e => e.stopPropagation()}>
+				<div style={p_style} onPointerDown={e => e.stopPropagation()}>
+					{is_mobile && <MobileHandle on_close={() => set_mobile_panel_open(false)} />}
 					<div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
 						<FreehandTab
 							path={selected_freehand[0]}
@@ -261,10 +301,14 @@ export function PropertiesPanel({
 	}
 
 	if (selected_shapes.length === 0) {
+		// On mobile, hide the panel when nothing is selected
+		if (is_mobile) {
+			return <>{collab_controls}</>;
+		}
 		return (
-			<div style={panel_wrapper_style}>
+			<div style={wrapper_style}>
 				{collab_controls}
-				<div style={panel_style}>
+				<div style={p_style}>
 					<div style={{ padding: 16, color: '#999', fontSize: 13, textAlign: 'center' }}>
 						Select an element to edit its properties
 					</div>
@@ -276,10 +320,12 @@ export function PropertiesPanel({
 	const shape = selected_shapes[0];
 	const style = shape.style;
 
+	if (is_mobile && !mobile_panel_open) return <>{collab_controls}</>;
 	return (
-		<div style={panel_wrapper_style}>
+		<div style={wrapper_style}>
 			{collab_controls}
-			<div style={panel_style} onPointerDown={e => e.stopPropagation()}>
+			<div style={p_style} onPointerDown={e => e.stopPropagation()}>
+			{is_mobile && <MobileHandle on_close={() => set_mobile_panel_open(false)} />}
 			{/* Tabs */}
 			<div style={{ display: 'flex', borderBottom: '1px solid #e0e0e0' }}>
 				{(['style', 'text', 'arrange'] as const).map(tab => (
@@ -356,7 +402,7 @@ function StyleTab({ style, on_style_change, on_rounded_change, is_rounded }: {
 						onClick={() => set_colour_page(p => (p - 1 + COLOUR_PAGES.length) % COLOUR_PAGES.length)}
 						style={nav_btn_style}
 					>‹</button>
-					<div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 3 }}>
+					<div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 44px))', gap: 3, justifyContent: 'center' }}>
 						{page.colours.map(c => (
 							<button
 								key={c}
@@ -782,13 +828,23 @@ function FreehandTab({ path, on_freehand_change, on_z_order }: {
 	);
 }
 
-// Outer wrapper — allows collab controls to overflow left
+// Outer wrapper — allows collab controls to overflow left (desktop: right sidebar, mobile: bottom sheet)
 const panel_wrapper_style: React.CSSProperties = {
 	position: 'absolute',
 	right: 0,
 	top: 0,
 	bottom: 0,
 	width: 220,
+	zIndex: 90,
+	pointerEvents: 'none',
+};
+
+const panel_wrapper_mobile_style: React.CSSProperties = {
+	position: 'absolute',
+	left: 0,
+	right: 0,
+	bottom: 0,
+	maxHeight: '55vh',
 	zIndex: 90,
 	pointerEvents: 'none',
 };
@@ -806,6 +862,22 @@ const panel_style: React.CSSProperties = {
 	overflowX: 'hidden',
 	fontFamily: 'inherit',
 	pointerEvents: 'auto',
+};
+
+const panel_mobile_style: React.CSSProperties = {
+	position: 'relative',
+	width: '100%',
+	background: '#fff',
+	borderTop: '1px solid #e0e0e0',
+	display: 'flex',
+	flexDirection: 'column',
+	boxShadow: '0 -2px 8px rgba(0,0,0,0.1)',
+	overflowY: 'auto',
+	overflowX: 'hidden',
+	fontFamily: 'inherit',
+	pointerEvents: 'auto',
+	maxHeight: '55vh',
+	borderRadius: '12px 12px 0 0',
 };
 
 const row_style: React.CSSProperties = {

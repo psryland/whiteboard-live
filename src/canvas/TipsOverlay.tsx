@@ -38,33 +38,17 @@ export function TipsOverlay() {
 	return (
 		<div style={{
 			position: 'absolute',
-			top: 8,
+			bottom: 8,
 			left: 8,
-			zIndex: 100,
+			zIndex: 80,
 			pointerEvents: 'auto',
+			display: 'flex',
+			flexDirection: 'column',
+			alignItems: 'flex-start',
 		}}>
-			<button
-				onClick={() => set_expanded(!expanded)}
-				style={{
-					background: expanded ? '#2196F3' : 'rgba(255,255,255,0.9)',
-					color: expanded ? '#fff' : '#555',
-					border: '1px solid #ddd',
-					borderRadius: 8,
-					padding: '5px 12px',
-					fontSize: 12,
-					fontWeight: 600,
-					cursor: 'pointer',
-					boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-					display: 'flex',
-					alignItems: 'center',
-					gap: 6,
-				}}
-			>
-				💡 Tips {expanded ? '▴' : '▾'}
-			</button>
 			{expanded && (
 				<div style={{
-					marginTop: 4,
+					marginBottom: 4,
 					background: 'rgba(255,255,255,0.96)',
 					border: '1px solid #ddd',
 					borderRadius: 8,
@@ -72,7 +56,7 @@ export function TipsOverlay() {
 					padding: '8px 0',
 					maxHeight: 'calc(100vh - 120px)',
 					overflowY: 'auto',
-					width: 340,
+					width: 'min(340px, calc(100vw - 24px))',
 				}}>
 					<div style={{ padding: '4px 12px 8px', fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #eee' }}>
 						Keyboard Shortcuts & Tips
@@ -102,6 +86,25 @@ export function TipsOverlay() {
 					))}
 				</div>
 			)}
+			<button
+				onClick={() => set_expanded(!expanded)}
+				style={{
+					background: expanded ? '#2196F3' : 'rgba(255,255,255,0.9)',
+					color: expanded ? '#fff' : '#555',
+					border: '1px solid #ddd',
+					borderRadius: 8,
+					padding: '5px 12px',
+					fontSize: 12,
+					fontWeight: 600,
+					cursor: 'pointer',
+					boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+					display: 'flex',
+					alignItems: 'center',
+					gap: 6,
+				}}
+			>
+				💡 Tips {expanded ? '▾' : '▴'}
+			</button>
 		</div>
 	);
 }

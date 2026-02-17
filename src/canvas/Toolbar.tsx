@@ -494,6 +494,10 @@ const toolbar_style: React.CSSProperties = {
 	zIndex: 100,
 	alignItems: 'center',
 	fontFamily: 'inherit',
+	maxWidth: 'calc(100vw - 16px)',
+	overflowX: 'auto',
+	overflowY: 'visible',
+	WebkitOverflowScrolling: 'touch',
 };
 
 const btn_style: React.CSSProperties = {
@@ -509,6 +513,7 @@ const btn_style: React.CSSProperties = {
 	transition: 'background 0.1s',
 	fontFamily: 'inherit',
 	padding: 0,
+	flexShrink: 0,
 };
 
 const chevron_style: React.CSSProperties = {
@@ -526,6 +531,7 @@ const chevron_style: React.CSSProperties = {
 	justifyContent: 'center',
 	fontFamily: 'inherit',
 	padding: 0,
+	flexShrink: 0,
 };
 
 const separator_style: React.CSSProperties = {
@@ -533,6 +539,7 @@ const separator_style: React.CSSProperties = {
 	height: 24,
 	background: '#ddd',
 	margin: '0 4px',
+	flexShrink: 0,
 };
 
 const dropdown_style: React.CSSProperties = {

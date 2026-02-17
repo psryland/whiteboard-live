@@ -150,6 +150,10 @@ export function Canvas() {
 	// Marquee rectangle (screen coords for overlay display)
 	const [marquee, set_marquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
+	// Multi-touch tracking for pinch-to-zoom / two-finger pan
+	const active_pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+	const pinch_state = useRef<{ dist: number; mid_x: number; mid_y: number; viewport: Viewport } | null>(null);
+
 	// In-progress connector preview
 	const [connector_preview, set_connector_preview] = useState<{ from: Point; to: Point } | null>(null);
 
@@ -569,6 +573,23 @@ export function Canvas() {
 
 	const Handle_Canvas_PointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
 		e.preventDefault(); // Prevent browser native drag behavior on SVG elements
+		(e.target as Element).releasePointerCapture?.(e.pointerId); // Allow multi-touch events to fire
+
+		// Track active pointers for pinch/pan gestures
+		active_pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+		// Two fingers down → start pinch-to-zoom / two-finger pan
+		if (active_pointers.current.size === 2) {
+			drag_state.current = { type: 'none', start_canvas: { x: 0, y: 0 }, start_screen: { x: 0, y: 0 } };
+			const [p1, p2] = [...active_pointers.current.values()];
+			const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+			const mid_x = (p1.x + p2.x) / 2;
+			const mid_y = (p1.y + p2.y) / 2;
+			pinch_state.current = { dist, mid_x, mid_y, viewport: { ...viewport } };
+			return;
+		}
+		if (active_pointers.current.size > 2) return;
+
 		// Freehand and laser tools should work even when clicking over existing objects
 		const on_background = (e.target as Element) === svg_ref.current;
 		if (!on_background && active_tool !== 'freehand' && active_tool !== 'laser') return;
@@ -690,6 +711,37 @@ export function Canvas() {
 	}, [viewport, active_tool, Get_SVG_Point, tool_settings]);
 
 	const Handle_Canvas_PointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+		// Update tracked pointer position
+		if (active_pointers.current.has(e.pointerId)) {
+			active_pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+		}
+
+		// Handle pinch-to-zoom / two-finger pan
+		if (pinch_state.current && active_pointers.current.size === 2) {
+			const [p1, p2] = [...active_pointers.current.values()];
+			const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+			const mid_x = (p1.x + p2.x) / 2;
+			const mid_y = (p1.y + p2.y) / 2;
+			const ps = pinch_state.current;
+			const scale = dist / ps.dist;
+			const new_zoom = Math.max(0.1, Math.min(5, ps.viewport.zoom * scale));
+
+			// Zoom centred on midpoint + pan offset
+			const svg = svg_ref.current;
+			const rect = svg?.getBoundingClientRect();
+			const ox = rect ? mid_x - rect.left : mid_x;
+			const oy = rect ? mid_y - rect.top : mid_y;
+			const ps_ox = rect ? ps.mid_x - rect.left : ps.mid_x;
+			const ps_oy = rect ? ps.mid_y - rect.top : ps.mid_y;
+
+			set_viewport({
+				zoom: new_zoom,
+				offset_x: ps.viewport.offset_x + (ox - ps_ox) + (ps_ox) * (1 - new_zoom / ps.viewport.zoom),
+				offset_y: ps.viewport.offset_y + (oy - ps_oy) + (ps_oy) * (1 - new_zoom / ps.viewport.zoom),
+			});
+			return;
+		}
+
 		const ds = drag_state.current;
 
 		// Broadcast cursor position even when not dragging
@@ -942,6 +994,10 @@ export function Canvas() {
 	}, [viewport, shapes, Get_SVG_Point, tool_settings]);
 
 	const Handle_Canvas_PointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+		// Clean up multi-touch tracking
+		active_pointers.current.delete(e.pointerId);
+		if (active_pointers.current.size < 2) pinch_state.current = null;
+
 		const ds = drag_state.current;
 
 		if (ds.type === 'create' && ds.creating_shape) {
@@ -1750,10 +1806,11 @@ export function Canvas() {
 
 			<svg
 				ref={svg_ref}
-				style={{ width: '100%', height: '100%', cursor: Active_Cursor(active_tool) }}
+				style={{ width: '100%', height: '100%', cursor: Active_Cursor(active_tool), touchAction: 'none' }}
 				onPointerDown={Handle_Canvas_PointerDown}
 				onPointerMove={Handle_Canvas_PointerMove}
 				onPointerUp={Handle_Canvas_PointerUp}
+				onPointerCancel={(e) => { active_pointers.current.delete(e.pointerId); if (active_pointers.current.size < 2) pinch_state.current = null; }}
 				onDoubleClick={Handle_Canvas_DoubleClick}
 				onWheel={Handle_Wheel}
 				onContextMenu={Handle_ContextMenu}
