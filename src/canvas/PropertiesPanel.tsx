@@ -62,6 +62,15 @@ const COLOUR_PAGES = [
 	},
 ];
 
+function CreatedByTag({ name }: { name?: string }) {
+	if (!name) return null;
+	return (
+		<div style={{ borderTop: '1px solid #e0e0e0', marginTop: 8, paddingTop: 8, fontSize: 11, color: '#999' }}>
+			Created by <span style={{ fontWeight: 600, color: '#666' }}>{name}</span>
+		</div>
+	);
+}
+
 export function PropertiesPanel({
 	selected_shapes,
 	selected_connectors,
@@ -225,6 +234,7 @@ export function PropertiesPanel({
 							on_connector_change={on_connector_change}
 							on_z_order={on_z_order}
 						/>
+						<CreatedByTag name={selected_connectors[0].created_by} />
 					</div>
 				</div>
 			</div>
@@ -243,6 +253,7 @@ export function PropertiesPanel({
 							on_freehand_change={on_freehand_change}
 							on_z_order={on_z_order}
 						/>
+						<CreatedByTag name={selected_freehand[0].created_by} />
 					</div>
 				</div>
 			</div>
@@ -320,6 +331,7 @@ export function PropertiesPanel({
 						on_z_order={on_z_order}
 					/>
 				)}
+				<CreatedByTag name={shape.created_by} />
 			</div>
 			</div>
 		</div>

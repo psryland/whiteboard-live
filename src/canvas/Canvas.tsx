@@ -7,6 +7,7 @@ import { UndoManager } from './undo';
 import { ShapeRenderer } from './ShapeRenderer';
 import { ConnectorRenderer } from './ConnectorRenderer';
 import { Toolbar } from './Toolbar';
+import { TipsOverlay } from './TipsOverlay';
 import { BoardPanel } from './BoardPanel';
 import { PropertiesPanel } from './PropertiesPanel';
 import { CollabSession, Generate_Room_Id } from './Collaboration';
@@ -93,6 +94,7 @@ export function Canvas() {
 	// Global z-index counter — initialised from existing items
 	const z_counter = useRef(initial_state.max_z);
 	function Next_Z(): number { return ++z_counter.current; }
+	function User_Name(): string { return localStorage.getItem('whitebored-user-name') || 'Anonymous'; }
 
 	// Viewport (pan/zoom)
 	const [viewport, set_viewport] = useState<Viewport>({ offset_x: 0, offset_y: 0, zoom: 1 });
@@ -384,10 +386,10 @@ export function Canvas() {
 		}
 	}, [editing_connector_id]);
 
-	// Save undo snapshot before making a change
+	// Save undo snapshot before making a change (uses refs for latest state)
 	const Push_Undo = useCallback(() => {
-		undo_mgr.Push({ shapes, connectors, freehand_paths });
-	}, [shapes, connectors, freehand_paths, undo_mgr]);
+		undo_mgr.Push({ shapes: shapes_ref.current, connectors: connectors_ref.current, freehand_paths: freehand_ref.current });
+	}, [undo_mgr]);
 
 	const Do_Undo = useCallback(() => {
 		const prev = undo_mgr.Undo({ shapes, connectors, freehand_paths });
@@ -435,7 +437,7 @@ export function Canvas() {
 			if (!selected_ids.has(s.id)) continue;
 			const new_id = Generate_Id('s');
 			id_map.set(s.id, new_id);
-			new_shapes.push({ ...s, id: new_id, x: s.x + 20, y: s.y + 20, ports: Default_Ports(), z_index: Next_Z() });
+			new_shapes.push({ ...s, id: new_id, x: s.x + 20, y: s.y + 20, ports: Default_Ports(), z_index: Next_Z(), created_by: User_Name() });
 		}
 		// Duplicate connectors — reconnect to duplicated shapes, or detach as free-floating
 		const new_connectors: Connector[] = [];
@@ -457,6 +459,7 @@ export function Canvas() {
 					: { shape_id: null, port_id: null, x: tgt_pt.x + 20, y: tgt_pt.y + 20 },
 				control_points: undefined,
 				z_index: Next_Z(),
+				created_by: User_Name(),
 			});
 			id_map.set(c.id, new_id);
 		}
@@ -482,7 +485,7 @@ export function Canvas() {
 		const new_shapes = clipboard.current.shapes.map(s => {
 			const new_id = Generate_Id('s');
 			id_map.set(s.id, new_id);
-			return { ...s, id: new_id, x: s.x + 30, y: s.y + 30, ports: Default_Ports(), z_index: Next_Z() };
+			return { ...s, id: new_id, x: s.x + 30, y: s.y + 30, ports: Default_Ports(), z_index: Next_Z(), created_by: User_Name() };
 		});
 		const new_connectors = clipboard.current.connectors.map(c => ({
 			...c,
@@ -490,6 +493,7 @@ export function Canvas() {
 			source: { ...c.source, shape_id: c.source.shape_id ? (id_map.get(c.source.shape_id) ?? c.source.shape_id) : null },
 			target: { ...c.target, shape_id: c.target.shape_id ? (id_map.get(c.target.shape_id) ?? c.target.shape_id) : null },
 			z_index: Next_Z(),
+			created_by: User_Name(),
 		}));
 		set_shapes(prev => [...prev, ...new_shapes]);
 		set_connectors(prev => [...prev, ...new_connectors]);
@@ -531,6 +535,7 @@ export function Canvas() {
 			routing: tool_settings.connector_routing,
 			style: { stroke: '#333333', stroke_width: tool_settings.connector_thickness },
 			z_index: Next_Z(),
+			created_by: User_Name(),
 		};
 		set_connectors(prev => [...prev, new_connector]);
 		Broadcast_Add('connector', new_connector);
@@ -620,6 +625,7 @@ export function Canvas() {
 					style: { ...DEFAULT_STYLE, fill: 'none', stroke: 'none', stroke_width: 0, font_size: tool_settings.text_size, text_colour: tool_settings.text_color },
 					ports: Default_Ports(),
 					z_index: Next_Z(),
+					created_by: User_Name(),
 				};
 				set_shapes(prev => [...prev, new_shape]);
 				Broadcast_Add('shape', new_shape);
@@ -671,6 +677,7 @@ export function Canvas() {
 					style: { ...DEFAULT_STYLE, fill: tool_settings.shape_fill, stroke: tool_settings.shape_stroke },
 					ports: Default_Ports(),
 					z_index: Next_Z(),
+					created_by: User_Name(),
 				};
 				drag_state.current = {
 					type: 'create',
@@ -957,19 +964,27 @@ export function Canvas() {
 			const canvas_pt = Screen_To_Canvas(Get_SVG_Point(e), viewport);
 			const sel_bounds = Normalise_Bounds(ds.marquee_start, canvas_pt);
 			const ids = new Set<string>();
+
+			// Shift-select: only select objects created by this user
+			const own_only = e.shiftKey;
+			const me = own_only ? User_Name() : null;
+
 			for (const shape of shapes) {
+				if (own_only && shape.created_by !== me) continue;
 				if (Bounds_Overlap(sel_bounds, Shape_Bounds(shape))) {
 					ids.add(shape.id);
 				}
 			}
 			// Also select freehand paths whose bounding box overlaps
 			for (const fp of freehand_paths) {
+				if (own_only && fp.created_by !== me) continue;
 				if (Bounds_Overlap(sel_bounds, Freehand_Bounds(fp.points))) {
 					ids.add(fp.id);
 				}
 			}
 			// Also select connectors whose endpoints are within the marquee
 			for (const c of connectors) {
+				if (own_only && c.created_by !== me) continue;
 				const src = Resolve_Connector_End(c.source, shapes);
 				const tgt = Resolve_Connector_End(c.target, shapes);
 				const c_bounds = {
@@ -1006,6 +1021,7 @@ export function Canvas() {
 					routing: tool_settings.connector_routing,
 					style: { stroke: '#333333', stroke_width: tool_settings.connector_thickness },
 					z_index: Next_Z(),
+					created_by: User_Name(),
 				};
 				set_connectors(prev => [...prev, new_connector]);
 				Broadcast_Add('connector', new_connector);
@@ -1038,6 +1054,7 @@ export function Canvas() {
 					points: smoothed,
 					style: { stroke: tool_settings.pen_color, stroke_width: tool_settings.pen_size },
 					z_index: Next_Z(),
+					created_by: User_Name(),
 				};
 				set_freehand_paths(prev => [...prev.filter(p => p.id !== '__drawing__'), path]);
 				Broadcast_Add('freehand', path);
@@ -1292,6 +1309,7 @@ export function Canvas() {
 			style: { ...DEFAULT_STYLE, fill: tool_settings.shape_fill, stroke: tool_settings.shape_stroke },
 			ports: Default_Ports(),
 			z_index: Next_Z(),
+			created_by: User_Name(),
 		};
 		set_shapes(prev => [...prev, new_shape]);
 		set_selected_ids(new Set([new_shape.id]));
@@ -1340,7 +1358,15 @@ export function Canvas() {
 			if (e.ctrlKey || e.metaKey) {
 				if (e.key === 'z') { e.preventDefault(); if (!remote_editing_blocked) Do_Undo(); }
 				if (e.key === 'y') { e.preventDefault(); if (!remote_editing_blocked) Do_Redo(); }
-				if (e.key === 'a') { e.preventDefault(); set_selected_ids(new Set([...shapes.map(s => s.id), ...connectors.map(c => c.id), ...freehand_paths.map(f => f.id)])); }
+				if (e.key === 'a') {
+					e.preventDefault();
+					const me = e.altKey ? User_Name() : null;
+					set_selected_ids(new Set([
+						...shapes.filter(s => !me || s.created_by === me).map(s => s.id),
+						...connectors.filter(c => !me || c.created_by === me).map(c => c.id),
+						...freehand_paths.filter(f => !me || f.created_by === me).map(f => f.id),
+					]));
+				}
 				if (e.key === 'c') { e.preventDefault(); Copy_Selected(); }
 				if (e.key === 'v') { e.preventDefault(); if (!remote_editing_blocked) Paste(); }
 				if (e.key === 'd') { e.preventDefault(); if (!remote_editing_blocked) Duplicate_Selected(); }
@@ -1706,6 +1732,8 @@ export function Canvas() {
 				has_selection={selected_ids.size > 0}
 				editing_blocked={remote_editing_blocked}
 			/>
+
+			<TipsOverlay />
 
 			<BoardPanel
 				is_open={show_board_panel}
