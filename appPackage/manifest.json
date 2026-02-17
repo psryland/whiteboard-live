@@ -26,14 +26,14 @@
 		{
 			"entityId": "whiteboard",
 			"name": "Whiteboard",
-			"contentUrl": "https://yellow-plant-01a814f00.6.azurestaticapps.net/index.html",
-			"websiteUrl": "https://yellow-plant-01a814f00.6.azurestaticapps.net/index.html",
+			"contentUrl": "https://whiteboard-live.rylogic.co.nz/index.html",
+			"websiteUrl": "https://whiteboard-live.rylogic.co.nz/index.html",
 			"scopes": ["personal"]
 		}
 	],
 	"configurableTabs": [
 		{
-			"configurationUrl": "https://yellow-plant-01a814f00.6.azurestaticapps.net/index.html",
+			"configurationUrl": "https://whiteboard-live.rylogic.co.nz/index.html",
 			"canUpdateConfiguration": false,
 			"scopes": ["team", "groupChat"],
 			"context": ["channelTab"]
@@ -41,6 +41,6 @@
 	],
 	"permissions": ["identity"],
 	"validDomains": [
-		"yellow-plant-01a814f00.6.azurestaticapps.net"
+		"whiteboard-live.rylogic.co.nz"
 	]
 }

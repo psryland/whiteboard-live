@@ -129,7 +129,7 @@ Boards can be saved to OneDrive or SharePoint via Microsoft Graph API. This requ
 1. Go to the [Azure Portal](https://portal.azure.com/) → **Microsoft Entra ID** → **App registrations** → **New registration**
 2. **Name**: `Whiteboard Live`
 3. **Supported account types**: "Accounts in any organizational directory (Any Microsoft Entra ID tenant - Multitenant)" — or single-tenant if you only need your org
-4. **Redirect URI**: Select **Single-page application (SPA)** and enter your SWA URL (e.g. `https://yellow-plant-01a814f00.6.azurestaticapps.net`)
+4. **Redirect URI**: Select **Single-page application (SPA)** and enter your SWA URL (e.g. `https://whiteboard-live.rylogic.co.nz`)
 5. Click **Register**
 
 ### Configure API Permissions
