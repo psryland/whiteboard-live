@@ -1769,7 +1769,8 @@ export function Canvas() {
 	}, [selected_ids, shapes, connectors, freehand_paths, Push_Undo]);
 
 	return (
-		<div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#f8f9fa' }}>
+		<div style={{ position: 'absolute', inset: 0, background: '#f8f9fa' }}>
+			{/* Toolbar sits outside the overflow-hidden canvas layer so dropdowns aren't clipped */}
 			<Toolbar
 				active_tool={active_tool}
 				on_tool_change={set_active_tool}
@@ -1804,6 +1805,8 @@ export function Canvas() {
 				graph_auth={graph_auth}
 			/>
 
+			{/* Canvas layer clips pan/zoom content */}
+			<div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
 			<svg
 				ref={svg_ref}
 				style={{ width: '100%', height: '100%', cursor: Active_Cursor(active_tool), touchAction: 'none' }}
@@ -2193,6 +2196,7 @@ export function Canvas() {
 				on_toggle_remote_editing={Handle_Toggle_Remote_Editing}
 				remote_editing_blocked={remote_editing_blocked}
 			/>
+			</div>
 		</div>
 	);
 }

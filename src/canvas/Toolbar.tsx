@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ToolType, ToolSettings, ShapeType, ArrowType, ConnectorRouting } from './types';
+import { useMediaQuery } from './useMediaQuery';
 
 interface ToolbarProps {
 	active_tool: ToolType;
@@ -74,6 +75,7 @@ export function Toolbar({
 }: ToolbarProps) {
 	const [open_dropdown, set_open_dropdown] = useState<DropdownId | null>(null);
 	const toolbar_ref = useRef<HTMLDivElement>(null);
+	const is_mobile = useMediaQuery('(max-width: 640px)');
 
 	// Close dropdown when clicking outside
 	useEffect(() => {
@@ -102,7 +104,7 @@ export function Toolbar({
 	}, [eb, on_tool_change]);
 
 	return (
-		<div ref={toolbar_ref} style={toolbar_style}>
+		<div ref={toolbar_ref} style={is_mobile ? toolbar_style_mobile : toolbar_style}>
 			{/* Select */}
 			<ToolBtn
 				icon="⊹"
@@ -120,6 +122,7 @@ export function Toolbar({
 				disabled={eb}
 				dropdown_open={open_dropdown === 'pen'}
 				on_toggle_dropdown={() => Toggle_Dropdown('pen')}
+				is_mobile={is_mobile}
 			>
 				<DropdownSection label="Size">
 					<div style={chip_row_style}>
@@ -154,6 +157,7 @@ export function Toolbar({
 				disabled={eb}
 				dropdown_open={open_dropdown === 'text'}
 				on_toggle_dropdown={() => Toggle_Dropdown('text')}
+				is_mobile={is_mobile}
 			>
 				<DropdownSection label="Size">
 					<div style={chip_row_style}>
@@ -188,6 +192,7 @@ export function Toolbar({
 				disabled={eb}
 				dropdown_open={open_dropdown === 'shape'}
 				on_toggle_dropdown={() => Toggle_Dropdown('shape')}
+				is_mobile={is_mobile}
 			>
 				<DropdownSection label="Shape type">
 					<div style={chip_row_style}>
@@ -246,6 +251,7 @@ export function Toolbar({
 				disabled={eb}
 				dropdown_open={open_dropdown === 'connector'}
 				on_toggle_dropdown={() => Toggle_Dropdown('connector')}
+				is_mobile={is_mobile}
 			>
 				<DropdownSection label="Thickness">
 					<div style={chip_row_style}>
@@ -309,6 +315,7 @@ export function Toolbar({
 				on_click={() => on_tool_change('laser')}
 				dropdown_open={open_dropdown === 'laser'}
 				on_toggle_dropdown={() => Toggle_Dropdown('laser')}
+				is_mobile={is_mobile}
 			>
 				<DropdownSection label="Colour">
 					<ColourGrid colors={LASER_COLORS} selected={tool_settings.laser_color}
@@ -316,7 +323,7 @@ export function Toolbar({
 				</DropdownSection>
 			</ToolBtnWithDropdown>
 
-			<div style={separator_style} />
+			<div style={is_mobile ? separator_style_mobile : separator_style} />
 
 			{/* Grid */}
 			<ToolBtnWithDropdown
@@ -327,6 +334,7 @@ export function Toolbar({
 				on_click={on_toggle_snap}
 				dropdown_open={open_dropdown === 'grid'}
 				on_toggle_dropdown={() => Toggle_Dropdown('grid')}
+				is_mobile={is_mobile}
 			>
 				<DropdownSection label="Grid size">
 					<div style={chip_row_style}>
@@ -351,13 +359,13 @@ export function Toolbar({
 			{/* Duplicate */}
 			<ToolBtn icon="⧉" label="Duplicate (Ctrl+D)" active={false} on_click={on_duplicate} disabled={!has_selection || eb} />
 
-			<div style={separator_style} />
+			<div style={is_mobile ? separator_style_mobile : separator_style} />
 
 			{/* Undo / Redo */}
 			<ToolBtn icon="↩" label="Undo (Ctrl+Z)" active={false} on_click={on_undo} disabled={!can_undo || eb} />
 			<ToolBtn icon="↪" label="Redo (Ctrl+Y)" active={false} on_click={on_redo} disabled={!can_redo || eb} />
 
-			<div style={separator_style} />
+			<div style={is_mobile ? separator_style_mobile : separator_style} />
 
 			{/* Delete */}
 			<ToolBtn icon="🗑" label="Delete (Del)" active={false} on_click={on_delete} disabled={!has_selection || eb} />
@@ -393,7 +401,7 @@ function ToolBtn({ icon, label, active, on_click, disabled, highlighted }: {
 	);
 }
 
-function ToolBtnWithDropdown({ icon, label, active, on_click, dropdown_open, on_toggle_dropdown, children, highlighted, disabled }: {
+function ToolBtnWithDropdown({ icon, label, active, on_click, dropdown_open, on_toggle_dropdown, children, highlighted, disabled, is_mobile }: {
 	icon: string;
 	label: string;
 	active: boolean;
@@ -403,6 +411,7 @@ function ToolBtnWithDropdown({ icon, label, active, on_click, dropdown_open, on_
 	children: React.ReactNode;
 	highlighted?: boolean;
 	disabled?: boolean;
+	is_mobile?: boolean;
 }) {
 	return (
 		<div style={{ position: 'relative', display: 'flex', opacity: disabled ? 0.4 : 1 }}>
@@ -433,10 +442,10 @@ function ToolBtnWithDropdown({ icon, label, active, on_click, dropdown_open, on_
 					borderLeft: 'none',
 				}}
 			>
-				▾
+				{is_mobile ? '◂' : '▾'}
 			</button>
 			{dropdown_open && (
-				<div style={dropdown_style} onPointerDown={(e) => e.stopPropagation()}>
+				<div style={is_mobile ? dropdown_style_mobile : dropdown_style} onPointerDown={(e) => e.stopPropagation()}>
 					{children}
 				</div>
 			)}
@@ -495,9 +504,26 @@ const toolbar_style: React.CSSProperties = {
 	alignItems: 'center',
 	fontFamily: 'inherit',
 	maxWidth: 'calc(100vw - 16px)',
-	overflowX: 'auto',
-	overflowY: 'visible',
-	WebkitOverflowScrolling: 'touch',
+	overflow: 'visible',
+};
+
+const toolbar_style_mobile: React.CSSProperties = {
+	position: 'absolute',
+	right: 8,
+	top: '50%',
+	transform: 'translateY(-50%)',
+	display: 'flex',
+	flexDirection: 'column',
+	gap: 2,
+	padding: 4,
+	background: '#fff',
+	borderRadius: 8,
+	boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+	zIndex: 100,
+	alignItems: 'center',
+	fontFamily: 'inherit',
+	maxHeight: 'calc(100vh - 16px)',
+	overflow: 'visible',
 };
 
 const btn_style: React.CSSProperties = {
@@ -542,11 +568,33 @@ const separator_style: React.CSSProperties = {
 	flexShrink: 0,
 };
 
+const separator_style_mobile: React.CSSProperties = {
+	width: 24,
+	height: 1,
+	background: '#ddd',
+	margin: '4px 0',
+	flexShrink: 0,
+};
+
 const dropdown_style: React.CSSProperties = {
 	position: 'absolute',
 	top: '100%',
 	left: 0,
 	marginTop: 4,
+	background: '#fff',
+	borderRadius: 8,
+	boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+	padding: 10,
+	minWidth: 200,
+	zIndex: 200,
+};
+
+// Mobile: pop out to the left of the toolbar
+const dropdown_style_mobile: React.CSSProperties = {
+	position: 'absolute',
+	top: 0,
+	right: '100%',
+	marginRight: 4,
 	background: '#fff',
 	borderRadius: 8,
 	boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
