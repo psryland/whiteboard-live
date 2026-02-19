@@ -370,6 +370,54 @@ export function Canvas() {
 		collab_ref.current?.Send_Operation('op_delete', { ids });
 	}
 
+	// Broadcast the diff between old and new state after undo/redo
+	function Broadcast_Undo_Diff(
+		old_shapes: Shape[], old_connectors: Connector[], old_freehand: FreehandPath[],
+		next: CanvasState,
+	): void {
+		if (!collab_ref.current) return;
+
+		const old_shape_ids = new Set(old_shapes.map(s => s.id));
+		const new_shape_ids = new Set(next.shapes.map(s => s.id));
+		const old_conn_ids = new Set(old_connectors.map(c => c.id));
+		const new_conn_ids = new Set(next.connectors.map(c => c.id));
+		const old_fh_ids = new Set(old_freehand.map(f => f.id));
+		const new_fh_ids = new Set(next.freehand_paths.map(f => f.id));
+
+		// Deleted items
+		const deleted_ids = [
+			...old_shapes.filter(s => !new_shape_ids.has(s.id)).map(s => s.id),
+			...old_connectors.filter(c => !new_conn_ids.has(c.id)).map(c => c.id),
+			...old_freehand.filter(f => !new_fh_ids.has(f.id)).map(f => f.id),
+		];
+		if (deleted_ids.length > 0) Broadcast_Delete(deleted_ids);
+
+		// Added items
+		for (const s of next.shapes) if (!old_shape_ids.has(s.id)) Broadcast_Add('shape', s);
+		for (const c of next.connectors) if (!old_conn_ids.has(c.id)) Broadcast_Add('connector', c);
+		for (const f of next.freehand_paths) if (!old_fh_ids.has(f.id)) Broadcast_Add('freehand', f);
+
+		// Updated items (present in both old and new)
+		for (const s of next.shapes) {
+			if (old_shape_ids.has(s.id)) {
+				const old = old_shapes.find(o => o.id === s.id);
+				if (old && old !== s) Broadcast_Update('shape', s);
+			}
+		}
+		for (const c of next.connectors) {
+			if (old_conn_ids.has(c.id)) {
+				const old = old_connectors.find(o => o.id === c.id);
+				if (old && old !== c) Broadcast_Update('connector', c);
+			}
+		}
+		for (const f of next.freehand_paths) {
+			if (old_fh_ids.has(f.id)) {
+				const old = old_freehand.find(o => o.id === f.id);
+				if (old && old !== f) Broadcast_Update('freehand', f);
+			}
+		}
+	}
+
 	// Persist state on change
 	useEffect(() => {
 		Save_State({ shapes, connectors, freehand_paths });
@@ -398,6 +446,7 @@ export function Canvas() {
 	const Do_Undo = useCallback(() => {
 		const prev = undo_mgr.Undo({ shapes, connectors, freehand_paths });
 		if (prev) {
+			Broadcast_Undo_Diff(shapes, connectors, freehand_paths, prev);
 			set_shapes(prev.shapes);
 			set_connectors(prev.connectors);
 			set_freehand_paths(prev.freehand_paths);
@@ -408,6 +457,7 @@ export function Canvas() {
 	const Do_Redo = useCallback(() => {
 		const next = undo_mgr.Redo({ shapes, connectors, freehand_paths });
 		if (next) {
+			Broadcast_Undo_Diff(shapes, connectors, freehand_paths, next);
 			set_shapes(next.shapes);
 			set_connectors(next.connectors);
 			set_freehand_paths(next.freehand_paths);
